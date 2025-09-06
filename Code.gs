@@ -10,14 +10,14 @@ const SH_USERS= 'Users';            // Потребители (по избор)
 const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
 const DEFAULT_METHODS = ['CASH','CARD','BANK'];
 const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
-const SH_SUP  = 'Suppliers';       // Доставчици
-const REPORT_PIN = '6176';         // PIN за справки
+const SH_SUP  = 'Suppliers';        // Доставчици
+const REPORT_PIN = '6176';          // PIN за справки
 const DOC_TYPES = [
   'INVOICE','CREDIT_NOTE','DEBIT_NOTE','DELIVERY_NOTE','FISCAL_RECEIPT',
   'CASH_VOUCHER_OUT','BANK_PAYMENT','BANK_FEE','VAT_PROTOCOL','RECEIPT','CONTRACT','OTHER'
 ];
 
-let TX_COLS = {};                  // map колона->индекс за Transactions
+let TX_COLS = {}; // map колона->индекс за Transactions
 
 /** ===================== WEB APP & MENU ===================== **/
 function onOpen(){
@@ -109,6 +109,12 @@ function addSupplier(name){
   return {ok:true};
 }
 
+/**
+ * payload:
+ *   date, store, type, method, category, description, amount
+ *   [if EXPENSE] supplier, doc_type, doc_number, doc_date
+ *   [optional file] file: {name, mimeType, bytes(base64)}
+ */
 function addTransaction(payload){
   ensureSheets_();
   const required = ['date','type','method','amount'];
@@ -128,6 +134,8 @@ function addTransaction(payload){
   if(isNaN(amount)) throw new Error('Сумата не е число');
 
   const dateOnly = toDateOnly_(payload.date);
+  if(!dateOnly) throw new Error('Невалидна дата');
+
   const user = Session.getActiveUser().getEmail() || 'anonymous';
 
   let supplier = payload.supplier || '';
@@ -148,21 +156,32 @@ function addTransaction(payload){
     if(docType === 'CREDIT_NOTE') amount = -Math.abs(amount);
   }
 
+  // файл (по избор)
+  let fileId = '', fileUrl = '';
+  if(payload.file && payload.file.bytes){
+    const saved = saveTxDocumentFile_(payload.file, payload.store || 'Основен', dateOnly);
+    fileId = saved.id || '';
+    fileUrl = saved.url || '';
+  }
+
   const cols = TX_COLS;
   const row = new Array(Object.keys(cols).length).fill('');
-  row[cols.timestamp] = new Date();
-  row[cols.date] = dateOnly;
-  row[cols.store] = payload.store || 'Основен';
-  row[cols.type] = type;
-  row[cols.method] = method;
-  row[cols.category] = payload.category || '';
-  row[cols.supplier] = supplier;
-  row[cols.doc_type] = docType;
-  row[cols.doc_number] = docNumber;
-  row[cols.doc_date] = docDate;
-  row[cols.description] = payload.description || '';
-  row[cols.amount] = round2_(amount);
-  row[cols.user] = user;
+  row[cols.timestamp]    = new Date();
+  row[cols.date]         = dateOnly;
+  row[cols.store]        = payload.store || 'Основен';
+  row[cols.type]         = type;
+  row[cols.method]       = method;
+  row[cols.category]     = payload.category || '';
+  row[cols.supplier]     = supplier;
+  row[cols.doc_type]     = docType;
+  row[cols.doc_number]   = docNumber;
+  row[cols.doc_date]     = docDate;
+  row[cols.description]  = payload.description || '';
+  row[cols.amount]       = round2_(amount);
+  row[cols.user]         = user;
+  if(cols.doc_file_id !== undefined)  row[cols.doc_file_id]  = fileId;
+  if(cols.doc_file_url !== undefined) row[cols.doc_file_url] = fileUrl;
+
   const sh = getSheet_(SH_TX);
   sh.appendRow(row);
   return {ok:true};
@@ -204,7 +223,9 @@ function listTransactions(query){
     doc_date: r[cols.doc_date],
     description: r[cols.description],
     amount: r[cols.amount],
-    user: r[cols.user]
+    user: r[cols.user],
+    doc_file_id:  cols.doc_file_id  !== undefined ? (r[cols.doc_file_id]  || '') : '',
+    doc_file_url: cols.doc_file_url !== undefined ? (r[cols.doc_file_url] || '') : ''
   }));
 }
 
@@ -217,7 +238,6 @@ function saveCashCount(payload){
   const store = payload.store || 'Основен';
   const user = Session.getActiveUser().getEmail() || 'anonymous';
 
-  // Подредба на деноминациите според meta.denoms
   const denoms = meta.denoms;
   let total = 0;
   const qtys = denoms.map(d => {
@@ -296,9 +316,11 @@ function closeDay(payload){
 function getReportData(query){
   ensureSheets_();
   if(!isReportAllowed_()) throw new Error('Unauthorized');
+
   const df = toDateOnly_(query.dateFrom);
   const dt = toDateOnly_(query.dateTo);
   const store = query?.store || null;
+
   const methods = getMeta().methods;
   const byMethod = {income:{}, expense:{}};
   methods.forEach(m=>{ byMethod.income[m]=0; byMethod.expense[m]=0; });
@@ -360,7 +382,8 @@ function getReportData(query){
         doc_date:r[cols.doc_date],
         description:r[cols.description],
         amount:r[cols.amount],
-        user:r[cols.user]
+        user:r[cols.user],
+        doc_file_url: (TX_COLS.doc_file_url !== undefined) ? (r[TX_COLS.doc_file_url]||'') : ''
       });
     });
   }
@@ -373,6 +396,7 @@ function getReportData(query){
   const suppliersTop = Object.keys(supMap).map(k=>({supplier:k, amount: round2_(supMap[k].amount), count: supMap[k].count})).sort((a,b)=>b.amount-a.amount).slice(0,20);
   methods.forEach(m=>{ byMethod.income[m]=round2_(byMethod.income[m]||0); byMethod.expense[m]=round2_(byMethod.expense[m]||0); });
 
+  // DayClosings
   const shd = getSheet_(SH_DAY);
   const closings = [];
   const lastd = shd.getLastRow();
@@ -407,7 +431,7 @@ function getReportData(query){
   const kpi = {income_total, expense_total, net, tx_count: income_count+expense_count, income_count, expense_count};
 
   return {
-    range:{from:df,to:dt,store:store||'Всички'},
+    range:{from: df || '', to: dt || '', store: store || 'Всички'},
     kpi,
     byMethod,
     byCategory,
@@ -423,9 +447,14 @@ function exportReportCsv(query){
   if(!isReportAllowed_()) throw new Error('Unauthorized');
   const data = getReportData(query);
   if(!data || !data.kpi) throw new Error('Няма данни за справка');
+
+  const from = data.range.from || '';
+  const to   = data.range.to   || '';
+  const store= data.range.store|| 'Всички';
+
   const lines = [];
   const csvCell_ = v => `"${String(v||'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
-  lines.push(`Период от,${data.range.from},до,${data.range.to},Магазин,${data.range.store}`);
+  lines.push(`Период от,${from},до,${to},Магазин,${store}`);
   lines.push('');
   lines.push('KPI');
   lines.push(`Общ приход,${data.kpi.income_total.toFixed(2)}`);
@@ -456,7 +485,7 @@ function exportReportCsv(query){
   data.suppliersTop.forEach(s=> lines.push(`${csvCell_(s.supplier)},${s.amount.toFixed(2)},${s.count}`));
   lines.push('');
   lines.push('Последни операции');
-  lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
+  lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user,doc_file_url');
   data.recentTx.forEach(t=>{
     lines.push([
       t.timestamp,
@@ -471,11 +500,12 @@ function exportReportCsv(query){
       t.doc_date||'',
       t.description||'',
       Number(t.amount).toFixed(2),
-      t.user||''
+      t.user||'',
+      t.doc_file_url||''
     ].map(csvCell_).join(','));
   });
   const csv = lines.join('\n');
-  const fname = `Report_${data.range.from}_${data.range.to}_${data.range.store}.csv`;
+  const fname = `Report_${from}_${to}_${store}.csv`;
   return Utilities.newBlob(csv, 'text/csv', fname);
 }
 
@@ -483,8 +513,12 @@ function exportReportCsv(query){
 function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
-  // Transactions с миграция
-  const txHeader = ['timestamp','date','store','type','method','category','supplier','doc_type','doc_number','doc_date','description','amount','user'];
+  // Transactions с миграция (+ колони за файл)
+  const txHeader = [
+    'timestamp','date','store','type','method','category','supplier',
+    'doc_type','doc_number','doc_date','description','amount','user',
+    'doc_file_id','doc_file_url'
+  ];
   let shTx = ss.getSheetByName(SH_TX);
   if(!shTx){
     shTx = ss.insertSheet(SH_TX);
@@ -556,8 +590,10 @@ function getSheet_(name){
 }
 
 function toDateOnly_(v){
-  // връща yyyy-mm-dd в TZ Europe/Sofia
-  const d = typeof v === 'string' ? new Date(v) : new Date(v);
+  // устойчиво към празни/невалидни стойности – връща yyyy-mm-dd или null
+  if(!v) return null;
+  const d = new Date(v);
+  if(isNaN(d.getTime())) return null;
   const tz = Session.getScriptTimeZone() || TZ;
   const y = Utilities.formatDate(d, tz, 'yyyy');
   const m = Utilities.formatDate(d, tz, 'MM');
@@ -568,3 +604,42 @@ function toDateOnly_(v){
 function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
+
+/** ====== Drive helpers for document files ====== **/
+function getDocsFolderId_(){
+  const set = getSheet_(SH_SET);
+  const last = set.getLastRow();
+  if(last >= 2){
+    const rows = set.getRange(2,1,last-1,2).getValues();
+    for(const [k,v] of rows){
+      if(String(k).trim() === 'DOC_FOLDER_ID' && v) return String(v).trim();
+    }
+  }
+  const parent = DriveApp.getRootFolder();
+  const folder = parent.createFolder('StoreDocs');
+  set.appendRow(['DOC_FOLDER_ID', folder.getId()]);
+  return folder.getId();
+}
+
+function saveTxDocumentFile_(fileObj, store, dateOnly){
+  if(!fileObj || !fileObj.bytes) return {id:'', url:''};
+  const rootId = getDocsFolderId_();
+  let folder = DriveApp.getFolderById(rootId);
+
+  const y = (dateOnly||'').split('-')[0] || Utilities.formatDate(new Date(), TZ, 'yyyy');
+  const m = (dateOnly||'').split('-')[1] || Utilities.formatDate(new Date(), TZ, 'MM');
+
+  function getOrCreate_(parent, name){
+    const it = parent.getFoldersByName(name);
+    return it.hasNext() ? it.next() : parent.createFolder(name);
+  }
+
+  folder = getOrCreate_(folder, store || 'Основен');
+  folder = getOrCreate_(folder, y);
+  folder = getOrCreate_(folder, m);
+
+  const blob = Utilities.newBlob(Utilities.base64Decode(fileObj.bytes), fileObj.mimeType || 'application/octet-stream', fileObj.name || 'document');
+  const f = folder.createFile(blob);
+  return { id: f.getId(), url: f.getUrl() };
+}
+
