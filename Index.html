@@ -25,112 +25,258 @@
     .bad{color:#dc2626}
     .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
     .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="row" style="margin-bottom:12px">
-      <div class="card" style="grid-column: span 12; display:grid; grid-template-columns:repeat(12,1fr); gap:12px; align-items:end;">
-        <div style="grid-column: span 3">
-          <label>Магазин</label>
-          <select id="store"></select>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="btn_tab_main" class="btn" onclick="showTab('main')">Основно</button>
+      <button id="btn_tab_reports" onclick="openReports()">Справки</button>
+    </div>
+
+    <div id="tab_main">
+      <div class="row" style="margin-bottom:12px">
+        <div class="card" style="grid-column: span 12; display:grid; grid-template-columns:repeat(12,1fr); gap:12px; align-items:end;">
+          <div style="grid-column: span 3">
+            <label>Магазин</label>
+            <select id="store"></select>
+          </div>
+          <div style="grid-column: span 3">
+            <label>Дата</label>
+            <input type="date" id="date" />
+          </div>
+          <div class="right" style="grid-column: span 6; display:flex; gap:8px; justify-content:flex-end; align-items:end">
+            <button class="btn" onclick="refreshAll()">Обнови</button>
+            <button onclick="openWebApp()">Отвори в нов таб</button>
+          </div>
         </div>
-        <div style="grid-column: span 3">
-          <label>Дата</label>
-          <input type="date" id="date" />
+      </div>
+
+      <div class="row">
+        <div class="card" style="grid-column: span 5">
+          <h3>Операция (приход/разход)</h3>
+          <div class="grid3">
+            <div>
+              <label>Тип</label>
+              <select id="tx_type">
+                <option value="INCOME">Приход</option>
+                <option value="EXPENSE">Разход</option>
+              </select>
+            </div>
+            <div>
+              <label>Метод</label>
+              <select id="tx_method"></select>
+            </div>
+            <div>
+              <label>Категория</label>
+              <select id="tx_category"></select>
+            </div>
+          </div>
+          <div id="expense_extra" style="display:none;margin-top:8px">
+            <div class="grid2">
+              <div>
+                <label>Доставчик</label>
+                <div style="display:flex;gap:4px">
+                  <select id="tx_supplier" style="flex:1"></select>
+                  <button type="button" onclick="openSupplierModal()">Нов</button>
+                </div>
+              </div>
+              <div>
+                <label>Тип документ</label>
+                <select id="tx_doc_type"></select>
+              </div>
+            </div>
+            <div class="grid2" style="margin-top:8px">
+              <div>
+                <label>№ документ</label>
+                <input type="text" id="tx_doc_number" />
+              </div>
+              <div>
+                <label>Дата на документа</label>
+                <input type="date" id="tx_doc_date" />
+              </div>
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <div>
+              <label>Сума</label>
+              <input type="number" id="tx_amount" step="0.01" />
+            </div>
+            <div>
+              <label>Описание</label>
+              <input type="text" id="tx_desc" />
+            </div>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
+            <button class="btn" id="btn_add" onclick="addTx()">Добави</button>
+          </div>
         </div>
-        <div class="right" style="grid-column: span 6; display:flex; gap:8px; justify-content:flex-end; align-items:end">
-          <button class="btn" onclick="refreshAll()">Обнови</button>
-          <button onclick="openWebApp()">Отвори в нов таб</button>
+
+        <div class="card" style="grid-column: span 7">
+          <h3>Обобщение за деня</h3>
+          <div id="summary" class="grid3"></div>
+          <div class="muted" style="margin-top:8px" id="summary_note"></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 5">
+          <h3>Броене на каса</h3>
+          <div id="denoms" class="grid3"></div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+            <div class="stat">Декларирани пари в каса: <span class="v" id="declared">0.00</span> лв</div>
+            <button class="btn" onclick="saveCount()">Запиши броене</button>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column: span 7">
+          <h3>Приключване на ден</h3>
+          <label>Бележка</label>
+          <textarea id="close_note" rows="3" placeholder="Коментар"></textarea>
+          <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
+            <div class="muted">Използва декларираната сума от броенето.</div>
+            <button class="btn" onclick="closeDay()">Приключи деня</button>
+          </div>
+          <div id="close_result" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Последни операции</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+              </tr>
+            </thead>
+            <tbody id="tx_rows"></tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <div class="row">
-      <div class="card" style="grid-column: span 5">
-        <h3>Операция (приход/разход)</h3>
+    <div id="tab_reports" style="display:none">
+      <div class="card" style="margin-bottom:12px">
         <div class="grid3">
           <div>
-            <label>Тип</label>
-            <select id="tx_type">
-              <option value="INCOME">Приход</option>
-              <option value="EXPENSE">Разход</option>
-            </select>
+            <label>Дата от</label>
+            <input type="date" id="rep_from" />
           </div>
           <div>
-            <label>Метод</label>
-            <select id="tx_method"></select>
+            <label>Дата до</label>
+            <input type="date" id="rep_to" />
           </div>
           <div>
-            <label>Категория</label>
-            <select id="tx_category"></select>
+            <label>Магазин</label>
+            <select id="rep_store"></select>
           </div>
         </div>
-        <div class="grid2" style="margin-top:8px">
-          <div>
-            <label>Сума</label>
-            <input type="number" id="tx_amount" step="0.01" />
-          </div>
-          <div>
-            <label>Описание</label>
-            <input type="text" id="tx_desc" />
-          </div>
-        </div>
-        <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
-          <button class="btn" id="btn_add" onclick="addTx()">Добави</button>
+        <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn" onclick="generateReport()">Генерирай</button>
+          <button onclick="exportReport()">Експорт CSV</button>
         </div>
       </div>
 
-      <div class="card" style="grid-column: span 7">
-        <h3>Обобщение за деня</h3>
-        <div id="summary" class="grid3"></div>
-        <div class="muted" style="margin-top:8px" id="summary_note"></div>
+      <div id="rep_kpi" class="grid4"></div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>По метод</h3>
+          <table id="rep_tbl_method"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 6">
+          <h3>Приходи по категории</h3>
+          <table id="rep_tbl_cat_income"></table>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>Разходи по категории</h3>
+          <table id="rep_tbl_cat_expense"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 6">
+          <h3>Разходи по тип документ</h3>
+          <table id="rep_tbl_doc"></table>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>Топ доставчици</h3>
+          <table id="rep_tbl_suppliers"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Приключвания</h3>
+          <table id="rep_tbl_closings"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Последни операции</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+              </tr>
+            </thead>
+            <tbody id="rep_recent_rows"></tbody>
+          </table>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="row" style="margin-top:12px">
-      <div class="card" style="grid-column: span 5">
-        <h3>Броене на каса</h3>
-        <div id="denoms" class="grid3"></div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
-          <div class="stat">Декларирани пари в каса: <span class="v" id="declared">0.00</span> лв</div>
-          <button class="btn" onclick="saveCount()">Запиши броене</button>
-        </div>
-      </div>
-
-      <div class="card" style="grid-column: span 7">
-        <h3>Приключване на ден</h3>
-        <label>Бележка</label>
-        <textarea id="close_note" rows="3" placeholder="Коментар"></textarea>
-        <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
-          <div class="muted">Използва декларираната сума от броенето.</div>
-          <button class="btn" onclick="closeDay()">Приключи деня</button>
-        </div>
-        <div id="close_result" style="margin-top:8px"></div>
+  <div id="modal_supplier" class="modal">
+    <div class="card">
+      <h3>Нов доставчик</h3>
+      <input type="text" id="new_supplier_name" />
+      <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="createSupplier()">Добави</button>
+        <button onclick="closeSupplierModal()">Отказ</button>
       </div>
     </div>
+  </div>
 
-    <div class="row" style="margin-top:12px">
-      <div class="card" style="grid-column: span 12">
-        <h3>Последни операции</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Описание</th><th>Сума</th><th>Потребител</th>
-            </tr>
-          </thead>
-          <tbody id="tx_rows"></tbody>
-        </table>
+  <div id="modal_pin" class="modal">
+    <div class="card">
+      <h3>PIN за справки</h3>
+      <input type="password" id="pin_input" inputmode="numeric" />
+      <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="submitPin()">ОК</button>
+        <button onclick="closePinModal()">Отказ</button>
       </div>
     </div>
   </div>
 
   <script>
     let META = null;
+    let REPORT_UNTIL = 0;
+    const DOC_TYPES = [
+      {v:'INVOICE',label:'Фактура'},
+      {v:'CREDIT_NOTE',label:'Кредитно известие'},
+      {v:'DEBIT_NOTE',label:'Дебитно известие'},
+      {v:'DELIVERY_NOTE',label:'Стокова разписка'},
+      {v:'FISCAL_RECEIPT',label:'Фискален бон'},
+      {v:'CASH_VOUCHER_OUT',label:'Разходен касов ордер'},
+      {v:'BANK_PAYMENT',label:'Банков превод'},
+      {v:'BANK_FEE',label:'Банкова такса'},
+      {v:'VAT_PROTOCOL',label:'Протокол по чл.117'},
+      {v:'RECEIPT',label:'Разписка'},
+      {v:'CONTRACT',label:'Договор'},
+      {v:'OTHER',label:'Друг'}
+    ];
+    const DOC_LABEL = {};
+    DOC_TYPES.forEach(d=>DOC_LABEL[d.v]=d.label);
 
-    function openWebApp(){
-      window.open(location.href, '_blank');
-    }
+    function openWebApp(){ window.open(location.href, '_blank'); }
 
     function today(){
       const d = new Date();
@@ -140,8 +286,60 @@
     }
 
     function money(n){ return (Number(n)||0).toFixed(2); }
-
     function byId(id){ return document.getElementById(id); }
+
+    function showTab(name){
+      byId('tab_main').style.display = name==='main'?'block':'none';
+      byId('tab_reports').style.display = name==='reports'?'block':'none';
+    }
+
+    function openReports(){
+      if(Date.now() < REPORT_UNTIL){
+        showTab('reports');
+        initReportFilters();
+      }else{
+        byId('pin_input').value='';
+        byId('modal_pin').style.display='flex';
+      }
+    }
+    function closePinModal(){ byId('modal_pin').style.display='none'; }
+    function submitPin(){
+      const pin = byId('pin_input').value;
+      google.script.run.withSuccessHandler(res=>{
+        REPORT_UNTIL = res.until;
+        closePinModal();
+        showTab('reports');
+        initReportFilters();
+      }).withFailureHandler(err=> alert(err.message||err)).verifyReportPin(pin);
+    }
+
+    function initReportFilters(){
+      byId('rep_from').value = today();
+      byId('rep_to').value = today();
+      const s = byId('rep_store');
+      s.innerHTML = '<option value="">Всички</option>' + META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+    }
+
+    function loadSuppliers(sel){
+      google.script.run.withSuccessHandler(list=>{
+        const s = byId('tx_supplier');
+        s.innerHTML = list.map(v=>`<option value="${v}">${v}</option>`).join('');
+        if(sel) s.value = sel;
+      }).listSuppliers();
+    }
+
+    function openSupplierModal(){
+      byId('new_supplier_name').value='';
+      byId('modal_supplier').style.display='flex';
+    }
+    function closeSupplierModal(){ byId('modal_supplier').style.display='none'; }
+    function createSupplier(){
+      const name = byId('new_supplier_name').value;
+      google.script.run.withSuccessHandler(()=>{
+        closeSupplierModal();
+        loadSuppliers(name);
+      }).withFailureHandler(err=> alert(err.message||err)).addSupplier(name);
+    }
 
     function setDeclared(){
       let total = 0;
@@ -169,20 +367,24 @@
       setDeclared();
     }
 
+    function fillDocTypes(){
+      const s = byId('tx_doc_type');
+      s.innerHTML = DOC_TYPES.map(o=>`<option value="${o.v}">${o.label}</option>`).join('');
+    }
+
     function fillMeta(meta){
       META = meta;
-      // магазини
       const s = byId('store');
       s.innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
-      // методи
       const m = byId('tx_method');
       m.innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
-      // категории (динамично спрямо тип)
       refillCategories();
-      // дата
       byId('date').value = today();
       fillDenoms();
+      fillDocTypes();
+      loadSuppliers();
       refreshAll();
+      onTypeChange();
     }
 
     function refillCategories(){
@@ -190,6 +392,12 @@
       const c = byId('tx_category');
       const arr = (META.categories[type]||[]);
       c.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
+    }
+
+    function onTypeChange(){
+      refillCategories();
+      const isExp = byId('tx_type').value === 'EXPENSE';
+      byId('expense_extra').style.display = isExp ? 'block' : 'none';
     }
 
     function addTx(){
@@ -204,15 +412,17 @@
         description: byId('tx_desc').value,
         amount: Number(byId('tx_amount').value||0)
       };
+      if(payload.type === 'EXPENSE'){
+        payload.supplier = byId('tx_supplier').value;
+        payload.doc_type = byId('tx_doc_type').value;
+        payload.doc_number = byId('tx_doc_number').value;
+        payload.doc_date = byId('tx_doc_date').value;
+      }
       google.script.run.withSuccessHandler(()=>{
-        byId('tx_amount').value='';
-        byId('tx_desc').value='';
+        byId('tx_amount').value=''; byId('tx_desc').value='';
         refreshAll();
         btn.disabled = false;
-      }).withFailureHandler(err=>{
-        alert(err.message||err);
-        btn.disabled = false;
-      }).addTransaction(payload);
+      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
     }
 
     function saveCount(){
@@ -236,7 +446,6 @@
         note: byId('close_note').value
       };
       google.script.run.withSuccessHandler(res=>{
-        // Разлика в касата се отбелязва като проблем, ако не е нула
         const diffCls = res.diff === 0 ? 'ok' : 'bad';
         byId('close_result').innerHTML = `
           <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
@@ -250,11 +459,9 @@
     function refreshAll(){
       const d = byId('date').value;
       const s = byId('store').value;
-      // summary
-      google.script.run.withSuccessHandler(drawSummary).withFailureHandler(e=>console.log(e)).getDailySummary(d, s);
-      // tx list
+      google.script.run.withSuccessHandler(drawSummary).getDailySummary(d, s);
       const q = {dateFrom:d, dateTo:d, store:s, limit:200};
-      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>console.log(e)).listTransactions(q);
+      google.script.run.withSuccessHandler(drawTx).listTransactions(q);
     }
 
     function drawSummary(s){
@@ -278,15 +485,82 @@
         <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
         <td>${r.method}</td>
         <td>${r.category||''}</td>
+        <td>${r.supplier||''}</td>
+        <td>${DOC_LABEL[r.doc_type]||''}</td>
+        <td>${r.doc_number||''}</td>
+        <td>${r.doc_date||''}</td>
         <td>${r.description||''}</td>
         <td>${money(r.amount)}</td>
         <td class="muted">${r.user||''}</td>
       </tr>`).join('');
     }
 
-    // INIT
+    function generateReport(){
+      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
+      google.script.run.withSuccessHandler(drawReport).withFailureHandler(err=>alert(err.message||err)).getReportData(q);
+    }
+
+    function exportReport(){
+      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
+      google.script.run.withSuccessHandler(blob=>{
+        const url = 'data:text/csv;charset=utf-8,' + encodeURIComponent(blob.getDataAsString());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.getName();
+        document.body.appendChild(a); a.click(); a.remove();
+      }).withFailureHandler(err=>alert(err.message||err)).exportReportCsv(q);
+    }
+
+    function drawReport(r){
+      const k = r.kpi;
+      const kpiEl = byId('rep_kpi');
+      kpiEl.innerHTML = [
+        {label:'Общ приход',v:k.income_total},
+        {label:'Общ разход',v:k.expense_total},
+        {label:'Нето',v:k.net},
+        {label:'Брой операции',v:k.tx_count}
+      ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
+
+      const tblM = byId('rep_tbl_method');
+      const methods = Object.keys(r.byMethod.income);
+      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' + methods.map(m=>`<tr><td>${m}</td><td>${money(r.byMethod.income[m])}</td><td>${money(r.byMethod.expense[m])}</td></tr>`).join('');
+
+      const tblCI = byId('rep_tbl_cat_income');
+      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' + r.byCategory.income.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+      const tblCE = byId('rep_tbl_cat_expense');
+      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' + r.byCategory.expense.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+
+      const tblDoc = byId('rep_tbl_doc');
+      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' + r.expenseByDocType.map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+
+      const tblSup = byId('rep_tbl_suppliers');
+      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' + r.suppliersTop.map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+
+      const tblClose = byId('rep_tbl_closings');
+      tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
+        r.closings.map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
+
+      const recent = byId('rep_recent_rows');
+      recent.innerHTML = r.recentTx.map(t=>`<tr>
+        <td>${new Date(t.timestamp).toLocaleTimeString()}</td>
+        <td>${t.date}</td>
+        <td>${t.store}</td>
+        <td>${t.type}</td>
+        <td>${t.method}</td>
+        <td>${t.category||''}</td>
+        <td>${t.supplier||''}</td>
+        <td>${DOC_LABEL[t.doc_type]||t.doc_type||''}</td>
+        <td>${t.doc_number||''}</td>
+        <td>${t.doc_date||''}</td>
+        <td>${t.description||''}</td>
+        <td>${money(t.amount)}</td>
+        <td class="muted">${t.user||''}</td>
+      </tr>`).join('');
+    }
+
     google.script.run.withSuccessHandler(fillMeta).getMeta();
-    byId('tx_type').addEventListener('change', refillCategories);
+    byId('tx_type').addEventListener('change', onTypeChange);
   </script>
 </body>
 </html>
+
