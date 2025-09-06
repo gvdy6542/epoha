@@ -567,8 +567,6 @@ function round2_(n){
  * Деплой като Web App (Anyone). Запиши WEBAPP_URL в Script Properties. Пусни setWebhook_TG().
  * =========================================================== */
 const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← търсиш това и го сменяш
-const TG_ALLOWED = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
-  .split(',').map(s=>s.trim()).filter(Boolean); // CSV от позволени chat_id
 const TG_API = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 
 function doPost(e){
@@ -582,8 +580,10 @@ function doPost(e){
     if(!msg || !msg.text) return ContentService.createTextOutput('ok');
 
     const chatId = String(msg.chat.id);
-    if (TG_ALLOWED.length && !TG_ALLOWED.includes(chatId)) {
-      telegramSend_(chatId, 'Нямате права за достъп.');
+    const allowed = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
+      .split(',').map(s=>s.trim()).filter(Boolean);
+    if (allowed.length && !allowed.includes(chatId)) {
+      telegramSend_(chatId, `Нямате права за достъп. Дайте този ID на администратор: ${chatId}`);
       return ContentService.createTextOutput('ok');
     }
 
@@ -591,7 +591,24 @@ function doPost(e){
     let m;
 
     if ((m = text.match(/^\/start\b/i))) {
-      telegramSend_(chatId, 'Ботът е онлайн. Ползвай /prihod, /razhod или /spravka YYYY-MM-DD YYYY-MM-DD');
+      telegramSend_(chatId, 'Здравей! Използвай бутоните или командите по-долу.', {
+        reply_markup: {
+          keyboard: [
+            [{ text: 'Приход' }, { text: 'Разход' }],
+            [{ text: 'Справка' }]
+          ],
+          resize_keyboard: true
+        }
+      });
+    }
+    else if (/^приход$/i.test(text)) {
+      telegramSend_(chatId, 'Въведи приход така: /prihod сума описание');
+    }
+    else if (/^разход$/i.test(text)) {
+      telegramSend_(chatId, 'Въведи разход така: /razhod сума описание');
+    }
+    else if (/^справка$/i.test(text)) {
+      telegramSend_(chatId, 'Ползвай /spravka YYYY-MM-DD YYYY-MM-DD');
     }
     else if ((m = text.match(/^\/prihod\s+(\d+(?:[.,]\d+)?)\s+(.+)/i))) {
       const amount = Number(m[1].replace(',','.'));
@@ -623,7 +640,10 @@ function doPost(e){
       const from = m[1], to = m[2];
       const r = getReportV2({dateFrom: from, dateTo: to});
       const k = r?.kpi || { income_total:0, expense_total:0, net:0 };
-      telegramSend_(chatId, `Период ${from} → ${to}\nПриход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
+      telegramSend_(chatId, `Период ${from} → ${to}
+Приход: ${k.income_total} лв
+Разход: ${k.expense_total} лв
+Нето: ${k.net} лв`);
     }
     else {
       telegramSend_(chatId, 'Непозната команда. Ползвай /start, /prihod, /razhod, /spravka YYYY-MM-DD YYYY-MM-DD');
@@ -639,12 +659,14 @@ function doPost(e){
   }
 }
 
-function telegramSend_(chatId, text){
+function telegramSend_(chatId, text, opts){
   if(!TG_API) return;
+  const payload = { chat_id: chatId, text };
+  if(opts) Object.assign(payload, opts);
   UrlFetchApp.fetch(`${TG_API}/sendMessage`, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({ chat_id: chatId, text })
+    payload: JSON.stringify(payload)
   });
 }
 
