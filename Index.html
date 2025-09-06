@@ -49,6 +49,20 @@
       </div>
       <div class="muted" id="pageInfo"></div>
     </div>
+
+    <h3>Каса</h3>
+    <div class="bar">
+      <select id="cashType">
+        <option value="turnover">Оборот</option>
+        <option value="income">Приход</option>
+        <option value="expense">Разход</option>
+      </select>
+      <input id="cashDesc" placeholder="Описание">
+      <input id="cashAmount" type="number" placeholder="Сума">
+      <button onclick="saveCash()">Запази</button>
+      <button onclick="showCashReport()">Отчет</button>
+      <span id="cashSummary" class="pill"></span>
+    </div>
   </div>
 
   <!-- Модал -->
@@ -196,6 +210,31 @@
         .deleteRowsByIds([id]);
     }
 
+    function saveCash(){
+      const type = $('#cashType').value;
+      const amount = parseFloat($('#cashAmount').value);
+      const desc = $('#cashDesc').value;
+      if (isNaN(amount)) return alert('Въведете сума');
+      const done = ()=>{
+        $('#cashDesc').value='';
+        $('#cashAmount').value='';
+        showCashReport();
+      };
+      if (type === 'turnover') {
+        google.script.run.withSuccessHandler(done).addTurnover(amount);
+      } else if (type === 'income') {
+        google.script.run.withSuccessHandler(done).addIncome(desc, amount);
+      } else {
+        google.script.run.withSuccessHandler(done).addExpense(desc, amount);
+      }
+    }
+
+    function showCashReport(){
+      google.script.run.withSuccessHandler(r=>{
+        $('#cashSummary').textContent = `Приходи: ${r.income}, Разходи: ${r.expense}, Баланс: ${r.balance}`;
+      }).getCashReport();
+    }
+
     // Викай готова функция от текущия Apps Script (ако имаш такава)
     function callCustom(){
       const fn = prompt('Име на функция за изпълнение (глобална):');
@@ -211,6 +250,7 @@
     function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
 
     init();
+    showCashReport();
   </script>
 </body>
 </html>
