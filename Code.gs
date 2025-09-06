@@ -566,7 +566,7 @@ function round2_(n){
  *   /spravka YYYY-MM-DD YYYY-MM-DD
  * Деплой като Web App (Anyone). Запиши WEBAPP_URL в Script Properties. Пусни setWebhook_TG().
  * =========================================================== */
-const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← търсиш това и го сменяш
+const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← смени с нов токен от BotFather
 const TG_API = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 
 function doPost(e){
@@ -580,13 +580,15 @@ function doPost(e){
     if(!msg || !msg.text) return ContentService.createTextOutput('ok');
 
     const chatId = String(msg.chat.id);
+
+    // Ограничение по чатове (по желание) – property TG_ALLOWED = CSV от chat_id
     const allowed = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
       .split(',').map(s=>s.trim()).filter(Boolean);
     if (allowed.length && !allowed.includes(chatId)) {
-      telegramSend_(chatId, `Нямате права за достъп. Администраторът е уведомен. Вашият ID: ${chatId}`);
+      telegramSend_(chatId, `Нямате права за достъп. Дайте този ID на администратор: ${chatId}`);
       const admins = (PropertiesService.getScriptProperties().getProperty('TG_ADMINS') || '')
         .split(',').map(s=>s.trim()).filter(Boolean);
-      admins.forEach(a=>telegramSend_(a, `Chat ${chatId} поиска достъп.`));
+      admins.forEach(a => telegramSend_(a, `Chat ${chatId} поиска достъп.`));
       return ContentService.createTextOutput('ok');
     }
 
@@ -594,7 +596,7 @@ function doPost(e){
     let m;
 
     if ((m = text.match(/^\/start\b/i))) {
-      telegramSend_(chatId, 'Здравей! Използвай бутоните или командите по-долу.', {
+      telegramSend_(chatId, 'Здравей! Ползвай /prihod, /razhod или /spravka YYYY-MM-DD YYYY-MM-DD', {
         reply_markup: {
           keyboard: [
             [{ text: 'Приход' }, { text: 'Разход' }],
