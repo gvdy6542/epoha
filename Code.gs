@@ -567,8 +567,6 @@ function round2_(n){
  * Деплой като Web App (Anyone). Запиши WEBAPP_URL в Script Properties. Пусни setWebhook_TG().
  * =========================================================== */
 const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← търсиш това и го сменяш
-const TG_ALLOWED = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
-  .split(',').map(s=>s.trim()).filter(Boolean); // CSV от позволени chat_id
 const TG_API = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 
 function doPost(e){
@@ -582,8 +580,10 @@ function doPost(e){
     if(!msg || !msg.text) return ContentService.createTextOutput('ok');
 
     const chatId = String(msg.chat.id);
-    if (TG_ALLOWED.length && !TG_ALLOWED.includes(chatId)) {
-      telegramSend_(chatId, 'Нямате права за достъп.');
+    const allowed = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
+      .split(',').map(s=>s.trim()).filter(Boolean);
+    if (allowed.length && !allowed.includes(chatId)) {
+      telegramSend_(chatId, `Нямате права за достъп. Дайте този ID на администратор: ${chatId}`);
       return ContentService.createTextOutput('ok');
     }
 
