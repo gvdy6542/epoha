@@ -513,7 +513,12 @@
       const d = byId('date').value;
       const s = byId('store').value;
       google.script.run.withSuccessHandler(drawSummary).getDailySummary(d, s);
-      refreshTx();
+
+      const q = {dateFrom: d, dateTo: d, store: s, limit: 200};
+      google.script.run
+        .withSuccessHandler(drawTx)
+        .withFailureHandler(err => { console.error(err); drawTx([]); })
+        .listTransactions(q);
     }
 
     function refreshTx(){
@@ -521,7 +526,10 @@
       const dt = byId('tx_to').value || byId('date').value;
       const s = byId('store').value;
       const q = {dateFrom: df, dateTo: dt, store: s, limit: 200};
-      google.script.run.withSuccessHandler(drawTx).listTransactions(q);
+      google.script.run
+        .withSuccessHandler(drawTx)
+        .withFailureHandler(err => { console.error(err); drawTx([]); })
+        .listTransactions(q);
     }
 
     function drawSummary(s){
@@ -539,6 +547,7 @@
     }
 
     function drawTx(rows){
+      if(!Array.isArray(rows)) rows = [];
       const tb = byId('tx_rows');
       tb.innerHTML = rows.map(r=>`<tr>
         <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
@@ -584,15 +593,10 @@
       const recent = byId('rep_recent_rows');
 
       if(!r || !r.kpi){
-        kpiEl.innerHTML = '';
-        tblM.innerHTML = '';
-        tblCI.innerHTML = '';
-        tblCE.innerHTML = '';
-        tblDoc.innerHTML = '';
-        tblSup.innerHTML = '';
-        tblClose.innerHTML = '';
+        kpiEl.innerHTML = tblM.innerHTML = tblCI.innerHTML = tblCE.innerHTML =
+          tblDoc.innerHTML = tblSup.innerHTML = tblClose.innerHTML = '';
         recent.innerHTML = '';
-        alert('Няма данни за справка или достъпът е отказан (PIN).');
+        alert('Няма данни или достъпът е отказан (PIN).');
         return;
       }
 
