@@ -589,10 +589,21 @@ function doPost(e){
     const body = e?.postData?.contents || '{}';
     const update = JSON.parse(body);
 
-    const msg = update.message;
-    if(!msg || !msg.text) return ContentService.createTextOutput('ok');
-
+    // Поддържаме както обикновени съобщения, така и callback от inline бутони
+    const msg = update.message || update.callback_query?.message;
+    if(!msg) return ContentService.createTextOutput('ok');
+    const text = (update.message?.text || update.callback_query?.data || '').trim();
     const chatId = String(msg.chat.id);
+
+    // Ако е callback_query, отговаряме за да не "виси" бутонът
+    if(update.callback_query){
+      try{
+        UrlFetchApp.fetch(`${TG_API}/answerCallbackQuery`, {
+          method: 'post',
+          payload: { callback_query_id: update.callback_query.id }
+        });
+      }catch(err){}
+    }
 
     // Ограничение по чатове (по желание) – property TG_ALLOWED = CSV от chat_id
     const allowed = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
@@ -605,18 +616,19 @@ function doPost(e){
       return ContentService.createTextOutput('ok');
     }
 
-    const text = (msg.text || '').trim();
     let m;
 
     if ((m = text.match(/^\/start\b/i))) {
       clearChatState_(chatId);
       telegramSend_(chatId, 'Здравей! Използвай бутоните или командите /prihod, /razhod, /spravka', {
         reply_markup: {
-          keyboard: [
-            [{ text: 'Приход' }, { text: 'Разход' }],
-            [{ text: 'Справка' }]
-          ],
-          resize_keyboard: true
+          inline_keyboard: [
+            [
+              { text: 'Приход',  callback_data: 'Приход' },
+              { text: 'Разход',  callback_data: 'Разход' }
+            ],
+            [ { text: 'Справка', callback_data: 'Справка' } ]
+          ]
         }
       });
       return ContentService.createTextOutput('ok');
@@ -699,8 +711,9 @@ function doPost(e){
     return ContentService.createTextOutput('ok');
   } catch (err) {
     try {
-      const chatId = String(JSON.parse(e.postData.contents).message.chat.id);
-      telegramSend_(chatId, 'Грешка: ' + (err.message || err));
+      const upd = JSON.parse(e.postData.contents);
+      const chatId = String(upd.message?.chat.id || upd.callback_query?.message.chat.id || '');
+      if(chatId) telegramSend_(chatId, 'Грешка: ' + (err.message || err));
     } catch(_) {}
     return ContentService.createTextOutput('ok');
   }
