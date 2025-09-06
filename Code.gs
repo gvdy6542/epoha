@@ -62,11 +62,37 @@ function getMeta(){
   const rows = set.getLastRow() > 1 ? set.getRange(2,1,set.getLastRow()-1,2).getValues() : [];
   const map = {};
   rows.forEach(r=> map[String(r[0]||'').trim()] = String(r[1]||'').trim());
-  if(map.DENOMS){ try{ meta.denoms = JSON.parse(map.DENOMS); }catch(e){} }
-  if(map.METHODS){ try{ meta.methods = JSON.parse(map.METHODS); }catch(e){} }
-  if(map.STORES){ try{ meta.stores = JSON.parse(map.STORES); }catch(e){} }
-  if(map.CAT_INCOME){ try{ meta.categories.INCOME = JSON.parse(map.CAT_INCOME); }catch(e){} }
-  if(map.CAT_EXPENSE){ try{ meta.categories.EXPENSE = JSON.parse(map.CAT_EXPENSE); }catch(e){} }
+
+  if(map.DENOMS){
+    try{
+      const arr = JSON.parse(map.DENOMS);
+      if(Array.isArray(arr)) meta.denoms = arr;
+    }catch(e){}
+  }
+  if(map.METHODS){
+    try{
+      const arr = JSON.parse(map.METHODS);
+      if(Array.isArray(arr)) meta.methods = arr;
+    }catch(e){}
+  }
+  if(map.STORES){
+    try{
+      const arr = JSON.parse(map.STORES);
+      if(Array.isArray(arr)) meta.stores = arr;
+    }catch(e){}
+  }
+  if(map.CAT_INCOME){
+    try{
+      const arr = JSON.parse(map.CAT_INCOME);
+      if(Array.isArray(arr)) meta.categories.INCOME = arr;
+    }catch(e){}
+  }
+  if(map.CAT_EXPENSE){
+    try{
+      const arr = JSON.parse(map.CAT_EXPENSE);
+      if(Array.isArray(arr)) meta.categories.EXPENSE = arr;
+    }catch(e){}
+  }
 
   return meta;
 }

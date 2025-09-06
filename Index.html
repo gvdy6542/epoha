@@ -330,13 +330,15 @@
       byId('rep_from').value = today();
       byId('rep_to').value = today();
       const s = byId('rep_store');
-      s.innerHTML = '<option value="">Всички</option>' + META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      const stores = Array.isArray(META.stores) ? META.stores : [];
+      s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
     }
 
     function loadSuppliers(sel){
       google.script.run.withSuccessHandler(list=>{
         const s = byId('tx_supplier');
-        s.innerHTML = list.map(v=>`<option value="${v}">${v}</option>`).join('');
+        const arr = Array.isArray(list) ? list : [];
+        s.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
         if(sel) s.value = sel;
       }).listSuppliers();
     }
@@ -580,26 +582,26 @@
         {label:'Брой операции',v:k.tx_count}
       ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
 
-      const methods = Object.keys(r.byMethod.income);
+      const methods = Object.keys(r.byMethod?.income || {});
       tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' +
         methods.map(m=>`<tr><td>${m}</td><td>${money(r.byMethod.income[m])}</td><td>${money(r.byMethod.expense[m])}</td></tr>`).join('');
 
       tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        r.byCategory.income.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+        (r.byCategory?.income || []).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
       tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        r.byCategory.expense.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+        (r.byCategory?.expense || []).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
       tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' +
-        r.expenseByDocType.map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+        (r.expenseByDocType || []).map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
 
       tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' +
-        r.suppliersTop.map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+        (r.suppliersTop || []).map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
 
       tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
-        r.closings.map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
+        (r.closings || []).map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
 
-      recent.innerHTML = r.recentTx.map(t=>`<tr>
+      recent.innerHTML = (r.recentTx || []).map(t=>`<tr>
         <td>${new Date(t.timestamp).toLocaleTimeString()}</td>
         <td>${t.date}</td>
         <td>${t.store}</td>
