@@ -422,7 +422,9 @@ function exportReportCsv(query){
   ensureSheets_();
   if(!isReportAllowed_()) throw new Error('Unauthorized');
   const data = getReportData(query);
+  if(!data || !data.kpi) throw new Error('Няма данни за справка');
   const lines = [];
+  const csvCell_ = v => `"${String(v||'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
   lines.push(`Период от,${data.range.from},до,${data.range.to},Магазин,${data.range.store}`);
   lines.push('');
   lines.push('KPI');
@@ -439,19 +441,19 @@ function exportReportCsv(query){
   lines.push('');
   lines.push('Приходи по категории');
   lines.push('Категория,Сума');
-  data.byCategory.income.forEach(c=> lines.push(`${c.category},${c.amount.toFixed(2)}`));
+  data.byCategory.income.forEach(c=> lines.push(`${csvCell_(c.category)},${c.amount.toFixed(2)}`));
   lines.push('');
   lines.push('Разходи по категории');
   lines.push('Категория,Сума');
-  data.byCategory.expense.forEach(c=> lines.push(`${c.category},${c.amount.toFixed(2)}`));
+  data.byCategory.expense.forEach(c=> lines.push(`${csvCell_(c.category)},${c.amount.toFixed(2)}`));
   lines.push('');
   lines.push('Разходи по тип документ');
   lines.push('Тип,Сума,Брой');
-  data.expenseByDocType.forEach(d=> lines.push(`${d.doc_type},${d.amount.toFixed(2)},${d.count}`));
+  data.expenseByDocType.forEach(d=> lines.push(`${csvCell_(d.doc_type)},${d.amount.toFixed(2)},${d.count}`));
   lines.push('');
   lines.push('Топ доставчици');
   lines.push('Доставчик,Сума,Брой');
-  data.suppliersTop.forEach(s=> lines.push(`${s.supplier},${s.amount.toFixed(2)},${s.count}`));
+  data.suppliersTop.forEach(s=> lines.push(`${csvCell_(s.supplier)},${s.amount.toFixed(2)},${s.count}`));
   lines.push('');
   lines.push('Последни операции');
   lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
@@ -467,10 +469,10 @@ function exportReportCsv(query){
       t.doc_type||'',
       t.doc_number||'',
       t.doc_date||'',
-      String(t.description||'').replace(/,/g,' '),
+      t.description||'',
       Number(t.amount).toFixed(2),
       t.user||''
-    ].join(','));
+    ].map(csvCell_).join(','));
   });
   const csv = lines.join('\n');
   const fname = `Report_${data.range.from}_${data.range.to}_${data.range.store}.csv`;
