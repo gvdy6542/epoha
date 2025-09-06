@@ -236,7 +236,8 @@
         note: byId('close_note').value
       };
       google.script.run.withSuccessHandler(res=>{
-        const diffCls = res.diff === 0 ? 'ok' : (res.diff > 0 ? 'ok' : 'bad');
+        // Разлика в касата се отбелязва като проблем, ако не е нула
+        const diffCls = res.diff === 0 ? 'ok' : 'bad';
         byId('close_result').innerHTML = `
           <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
           <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
