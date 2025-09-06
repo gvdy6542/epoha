@@ -302,7 +302,7 @@ function getReportV2(query){
     const c={}; header.forEach((h,i)=>c[h]=i);
     const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
 
-    const byMethod={}, byCatIn={}, byCatEx={}, byDoc={}, bySup={};
+    const byMethod={}, byCatIn={}, byCatEx={}, byDoc={}, bySup={}, perDay={};
 
     const rows = data.filter(r=>{
       const d=r[c.date]; const st=r[c.store];
@@ -314,17 +314,23 @@ function getReportV2(query){
 
     rows.forEach(r=>{
       const t=r[c.type], m=r[c.method], cat=r[c.category], sup=r[c.supplier], dtp=r[c.doc_type], amt=toNum_(r[c.amount]);
+      const key = `${r[c.date]}|${r[c.store]}`;
+      const pd = perDay[key] || (perDay[key]={income:0,expenses:{}});
       if(!byMethod[m]) byMethod[m]={income:0,expense:0};
       if(t==='INCOME'){
         res.kpi.income_total += amt; res.kpi.income_count++;
         byMethod[m].income += amt;
         if(cat) byCatIn[cat] = (byCatIn[cat]||0) + amt;
+        pd.income += amt;
       }else if(t==='EXPENSE'){
         res.kpi.expense_total += amt; res.kpi.expense_count++;
         byMethod[m].expense += amt;
         if(cat) byCatEx[cat] = (byCatEx[cat]||0) + amt;
         if(dtp){ const o=byDoc[dtp]||{amount:0,count:0}; o.amount+=amt; o.count++; byDoc[dtp]=o; }
-        if(sup){ const o=bySup[sup]||{amount:0,count:0}; o.amount+=amt; o.count++; bySup[sup]=o; }
+        if(sup){
+          const o=bySup[sup]||{amount:0,count:0}; o.amount+=amt; o.count++; bySup[sup]=o;
+          pd.expenses[sup] = (pd.expenses[sup]||0) + amt;
+        }
       }
     });
 
@@ -359,6 +365,31 @@ function getReportV2(query){
     res.kpi.tx_count     = res.kpi.income_count + res.kpi.expense_count;
   }
 
+  // CashCounts per day
+  const shc = getSheet_(SH_CNT);
+  const lastc = shc.getLastRow();
+  const cashMap = {};
+  if(lastc >= 2){
+    const hc = shc.getRange(1,1,1,shc.getLastColumn()).getValues()[0];
+    const ic = {}; hc.forEach((v,i)=>ic[v]=i);
+    const denomCols = Object.keys(ic).filter(k=>k.startsWith('qty_'));
+    const datac = shc.getRange(2,1,lastc-1,shc.getLastColumn()).getValues();
+    datac.forEach(r=>{
+      const d = r[ic.date];
+      const st = r[ic.store];
+      if(df && d<df) return;
+      if(dt && d>dt) return;
+      if(store && st!==store) return;
+      const key = `${d}|${st}`;
+      const arr = [];
+      denomCols.forEach(col=>{
+        const qty = r[ic[col]];
+        if(qty){ const denom = col.replace('qty_',''); arr.push(`${denom}x${qty}`); }
+      });
+      cashMap[key] = arr.join(';');
+    });
+  }
+
   // DayClosings
   const shd = getSheet_(SH_DAY);
   const lastd = shd.getLastRow();
@@ -372,6 +403,9 @@ function getReportV2(query){
       if(df && d<df) return;
       if(dt && d>dt) return;
       if(store && st!==store) return;
+      const key = `${d}|${st}`;
+      const pd = perDay[key] || {income:0,expenses:{}};
+      const expStr = Object.keys(pd.expenses).map(s=>`${s}:${round2(pd.expenses[s])}`).join(';');
       res.closings.push({
         date:d, store:st,
         sales_cash:r[idx.sales_cash]||0,
@@ -382,7 +416,10 @@ function getReportV2(query){
         expenses_bank:r[idx.expenses_bank]||0,
         declared_cash:r[idx.declared_cash]||0,
         expected_cash:r[idx.expected_cash]||0,
-        diff:r[idx.diff]||0
+        diff:r[idx.diff]||0,
+        banknotes:cashMap[key]||'',
+        expense_suppliers:expStr,
+        income_total:round2(pd.income)
       });
     });
   }
@@ -423,6 +460,10 @@ function exportReportCsvV2(query){
   lines.push('Топ доставчици');
   lines.push('Доставчик,Сума,Брой');
   data.suppliersTop.forEach(s=> lines.push(`${q(s.supplier)},${s.amount},${s.count}`));
+  lines.push('');
+  lines.push('Дневни отчети');
+  lines.push('Дата,Магазин,Прод. каса,Прод. карта,Прод. банка,Разх. каса,Разх. карта,Разх. банка,Декл. каса,Очакв. каса,Разлика,Банкноти,Разходи доставчици,Приход');
+  data.closings.forEach(c=> lines.push(`${c.date},${q(c.store)},${c.sales_cash},${c.sales_card},${c.sales_bank},${c.expenses_cash},${c.expenses_card},${c.expenses_bank},${c.declared_cash},${c.expected_cash},${c.diff},${q(c.banknotes)},${q(c.expense_suppliers)},${c.income_total}`));
   lines.push('');
   lines.push('Последни операции');
   lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
