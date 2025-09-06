@@ -21,17 +21,14 @@ jobs:
 
       - name: Write .clasp.json
         run: |
-          cat <<'EOF' > .clasp.json
-          {
-            "scriptId": "11qn78SG8gk7NAfwoOBVR5L57VkHSWh_yTaSXTqMfcMuqNF5Seap8BngQ",
+          echo '{
+            "scriptId":"11qn78SG8gk7NAfwoOBVR5L57VkHSWh_yTaSXTqMfcMuqNF5Seap8BngQ",
             "rootDir": "."
-          }
-          EOF
+          }' > .clasp.json
 
       - name: Write .clasprc.json file
-        if: ${{ secrets.CLASPRC_JSON != '' }}
-        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+        run: |
+          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
 
       - name: Deploy to Google Apps Script
-        if: ${{ secrets.CLASPRC_JSON != '' }}
         run: clasp push --force
