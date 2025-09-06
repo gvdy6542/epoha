@@ -15,7 +15,7 @@
     .btn{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
     .btn:disabled{opacity:.6;cursor:not-allowed}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;font-size:13px}
+    th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;font-size:13px;vertical-align:top}
     th{background:#f8fafc}
     .stat{display:flex;gap:8px;align-items:baseline}
     .stat .v{font-weight:700}
@@ -27,7 +27,6 @@
     .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
     .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center}
-    .center{display:flex;justify-content:center;align-items:center}
   </style>
 </head>
 <body>
@@ -99,13 +98,6 @@
                 <input type="date" id="tx_doc_date" />
               </div>
             </div>
-            <div class="grid2" style="margin-top:8px">
-              <div>
-                <label>Файл (снимка/PDF)</label>
-                <input type="file" id="tx_doc_file" accept="image/*,application/pdf" />
-              </div>
-              <div></div>
-            </div>
           </div>
           <div class="grid2" style="margin-top:8px">
             <div>
@@ -163,14 +155,14 @@
               <label>До дата</label>
               <input type="date" id="tx_to" />
             </div>
-            <div class="center">
+            <div style="display:flex;align-items:flex-end;justify-content:flex-end">
               <button class="btn" onclick="refreshTx()">Филтър</button>
             </div>
           </div>
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Файл</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
               </tr>
             </thead>
             <tbody id="tx_rows"></tbody>
@@ -245,7 +237,7 @@
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Файл</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
               </tr>
             </thead>
             <tbody id="rep_recent_rows"></tbody>
@@ -266,21 +258,9 @@
     </div>
   </div>
 
-  <div id="modal_pin" class="modal">
-    <div class="card">
-      <h3>PIN за справки</h3>
-      <input type="password" id="pin_input" inputmode="numeric" />
-      <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn" onclick="submitPin()">ОК</button>
-        <button onclick="closePinModal()">Отказ</button>
-      </div>
-    </div>
-  </div>
-
   <script>
-    // ===== helpers =====
     let META = null;
-    let REPORT_UNTIL = 0;
+
     const DOC_TYPES = [
       {v:'INVOICE',label:'Фактура'},
       {v:'CREDIT_NOTE',label:'Кредитно известие'},
@@ -296,81 +276,79 @@
       {v:'OTHER',label:'Друг'}
     ];
     const DOC_LABEL = {}; DOC_TYPES.forEach(d=>DOC_LABEL[d.v]=d.label);
-    const byId = id => document.getElementById(id);
-    const money = n => (Number(n)||0).toFixed(2);
-    const today = () => {
+
+    function openWebApp(){ window.open(location.href, '_blank'); }
+
+    function today(){
       const d = new Date();
       const mm = String(d.getMonth()+1).padStart(2,'0');
       const dd = String(d.getDate()).padStart(2,'0');
       return `${d.getFullYear()}-${mm}-${dd}`;
-    };
-    const asArray = v => Array.isArray(v) ? v : [];
+    }
 
-    function openWebApp(){ window.open(location.href, '_blank'); }
+    function money(n){
+      const v = Number(String(n??0).replace(',','.')) || 0;
+      return v.toFixed(2);
+    }
+    function byId(id){ return document.getElementById(id); }
 
     function showTab(name){
       byId('tab_main').style.display = name==='main'?'block':'none';
       byId('tab_reports').style.display = name==='reports'?'block':'none';
     }
 
-    // ===== PIN / Reports =====
     function openReports(){
-      if(Date.now() < REPORT_UNTIL){
-        showTab('reports'); initReportFilters();
-      }else{
-        byId('pin_input').value=''; byId('modal_pin').style.display='flex';
-      }
-    }
-    function closePinModal(){ byId('modal_pin').style.display='none'; }
-    function submitPin(){
-      const pin = byId('pin_input').value;
-      google.script.run.withSuccessHandler(res=>{
-        REPORT_UNTIL = res.until; closePinModal(); showTab('reports'); initReportFilters();
-      }).withFailureHandler(err=> alert((err && err.message) || err)).verifyReportPin(pin);
+      showTab('reports');
+      initReportFilters();
     }
 
-    // ===== UI fill =====
     function initReportFilters(){
-      if(!META){
-        google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta();
-        return;
-      }
+      if(!META){ google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta(); return; }
       byId('rep_from').value = today();
-      byId('rep_to').value   = today();
-      const stores = asArray(META.stores);
-      byId('rep_store').innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      byId('rep_to').value = today();
+      const s = byId('rep_store');
+      const stores = Array.isArray(META.stores) ? META.stores : [];
+      s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
     }
 
     function loadSuppliers(sel){
       google.script.run.withSuccessHandler(list=>{
         const s = byId('tx_supplier');
-        const arr = asArray(list);
+        const arr = Array.isArray(list) ? list : [];
         s.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
         if(sel) s.value = sel;
       }).listSuppliers();
     }
 
-    function openSupplierModal(){ byId('new_supplier_name').value=''; byId('modal_supplier').style.display='flex'; }
-    function closeSupplierModal(){ byId('modal_supplier').style.display='none'; }
+    function openSupplierModal(){
+      byId('new_supplier_name').value='';
+      document.getElementById('modal_supplier').style.display='flex';
+    }
+    function closeSupplierModal(){ document.getElementById('modal_supplier').style.display='none'; }
     function createSupplier(){
       const name = byId('new_supplier_name').value;
       google.script.run.withSuccessHandler(()=>{
-        closeSupplierModal(); loadSuppliers(name);
-      }).withFailureHandler(err=> alert((err && err.message) || err)).addSupplier(name);
+        closeSupplierModal();
+        loadSuppliers(name);
+      }).withFailureHandler(err=> alert(err.message||err)).addSupplier(name);
     }
 
     function setDeclared(){
       let total = 0;
-      document.querySelectorAll('[data-denom]').forEach(b=>{
-        const d = Number(b.dataset.denom); const q = Number(b.value||0); total += d*q;
+      const boxes = document.querySelectorAll('[data-denom]');
+      boxes.forEach(b=>{
+        const d = Number(b.dataset.denom);
+        const q = Number(b.value||0);
+        total += d*q;
       });
       byId('declared').textContent = money(total);
       return total;
     }
 
     function fillDenoms(){
-      const wrap = byId('denoms'); wrap.innerHTML = '';
-      (META.denoms || []).forEach(d=>{
+      const wrap = byId('denoms');
+      wrap.innerHTML = '';
+      (META.denoms||[]).forEach(d => {
         const div = document.createElement('div');
         div.innerHTML = `
           <label>${Number(d).toFixed(2)} лв – брой</label>
@@ -381,104 +359,113 @@
       setDeclared();
     }
 
-    function fillDocTypes(){ byId('tx_doc_type').innerHTML = DOC_TYPES.map(o=>`<option value="${o.v}">${o.label}</option>`).join(''); }
+    function fillDocTypes(){
+      const s = byId('tx_doc_type');
+      s.innerHTML = DOC_TYPES.map(o=>`<option value="${o.v}">${o.label}</option>`).join('');
+    }
 
     function fillMeta(meta){
       META = meta;
-      byId('store').innerHTML = asArray(META.stores).map(v=>`<option value="${v}">${v}</option>`).join('');
-      byId('tx_method').innerHTML = asArray(META.methods).map(v=>`<option value="${v}">${v}</option>`).join('');
+      byId('store').innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      byId('tx_method').innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
       refillCategories();
-      const td = today();
-      byId('date').value = td; byId('tx_from').value = td; byId('tx_to').value = td;
-      fillDenoms(); fillDocTypes(); loadSuppliers(); refreshAll(); onTypeChange();
+      byId('date').value = today();
+      byId('tx_from').value = today();
+      byId('tx_to').value = today();
+      fillDenoms();
+      fillDocTypes();
+      loadSuppliers();
+      refreshAll();
+      onTypeChange();
     }
 
     function refillCategories(){
       const type = byId('tx_type').value;
-      const arr = (META.categories && META.categories[type]) ? META.categories[type] : [];
-      byId('tx_category').innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
+      const c = byId('tx_category');
+      const arr = (META.categories[type]||[]);
+      c.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
     }
+
     function onTypeChange(){
-      refillCategories(); const isExp = byId('tx_type').value === 'EXPENSE';
+      refillCategories();
+      const isExp = byId('tx_type').value === 'EXPENSE';
       byId('expense_extra').style.display = isExp ? 'block' : 'none';
     }
 
-    // ===== actions =====
     function addTx(){
-      const btn = byId('btn_add'); btn.disabled = true;
+      const btn = byId('btn_add');
+      btn.disabled = true;
       const payload = {
-        date: byId('date').value, store: byId('store').value,
-        type: byId('tx_type').value, method: byId('tx_method').value,
-        category: byId('tx_category').value, description: byId('tx_desc').value,
+        date: byId('date').value,
+        store: byId('store').value,
+        type: byId('tx_type').value,
+        method: byId('tx_method').value,
+        category: byId('tx_category').value,
+        description: byId('tx_desc').value,
         amount: Number(byId('tx_amount').value||0)
       };
       if(payload.type === 'EXPENSE'){
-        payload.supplier  = byId('tx_supplier').value;
-        payload.doc_type  = byId('tx_doc_type').value;
-        payload.doc_number= byId('tx_doc_number').value;
-        payload.doc_date  = byId('tx_doc_date').value;
+        payload.supplier = byId('tx_supplier').value;
+        payload.doc_type = byId('tx_doc_type').value;
+        payload.doc_number = byId('tx_doc_number').value;
+        payload.doc_date = byId('tx_doc_date').value;
       }
-
-      const fileInput = byId('tx_doc_file');
-      const file = fileInput && fileInput.files && fileInput.files[0];
-
-      const send = () => {
-        google.script.run.withSuccessHandler(()=>{
-          byId('tx_amount').value=''; byId('tx_desc').value=''; if(fileInput) fileInput.value='';
-          refreshAll(); btn.disabled=false;
-        }).withFailureHandler(err=>{ alert((err && err.message) || err); btn.disabled=false; }).addTransaction(payload);
-      };
-
-      if(file){
-        const reader = new FileReader();
-        reader.onload = () => { const base64 = String(reader.result||'').split(',')[1] || ''; payload.file = {name:file.name, mimeType:file.type, bytes:base64}; send(); };
-        reader.onerror = () => { alert('Грешка при четене на файла'); btn.disabled=false; };
-        reader.readAsDataURL(file);
-      }else send();
+      google.script.run.withSuccessHandler(()=>{
+        byId('tx_amount').value=''; byId('tx_desc').value='';
+        refreshAll();
+        btn.disabled = false;
+      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
     }
 
     function saveCount(){
       const counts = {};
-      document.querySelectorAll('[data-denom]').forEach(b=> counts[b.dataset.denom]=Number(b.value||0));
+      document.querySelectorAll('[data-denom]').forEach(b=>{
+        counts[b.dataset.denom] = Number(b.value||0);
+      });
       const payload = { date: byId('date').value, store: byId('store').value, counts };
       google.script.run.withSuccessHandler(res=>{
-        byId('declared').textContent = money(res.total); alert('Броенето е записано.');
-      }).withFailureHandler(err=> alert((err && err.message) || err)).saveCashCount(payload);
+        byId('declared').textContent = money(res.total);
+        alert('Броенето е записано.');
+      }).withFailureHandler(err=> alert(err.message||err)).saveCashCount(payload);
     }
 
     function closeDay(){
       const declared = Number(byId('declared').textContent.replace(',','.'))||0;
-      const payload = { date: byId('date').value, store: byId('store').value, declaredCash: declared, note: byId('close_note').value };
+      const payload = {
+        date: byId('date').value,
+        store: byId('store').value,
+        declaredCash: declared,
+        note: byId('close_note').value
+      };
       google.script.run.withSuccessHandler(res=>{
         const diffCls = res.diff === 0 ? 'ok' : 'bad';
         byId('close_result').innerHTML = `
           <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
           <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
-          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>`;
+          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>
+        `;
         refreshAll();
-      }).withFailureHandler(err=> alert((err && err.message) || err)).closeDay(payload);
+      }).withFailureHandler(err=> alert(err.message||err)).closeDay(payload);
     }
 
     function refreshAll(){
-      const d = byId('date').value, s = byId('store').value;
-      google.script.run.withSuccessHandler(drawSummary).withFailureHandler(err=>alert((err&&err.message)||err)).getDailySummary(d, s);
+      const d = byId('date').value;
+      const s = byId('store').value;
+      google.script.run.withSuccessHandler(drawSummary).getDailySummary(d, s);
       refreshTx();
     }
 
     function refreshTx(){
       const df = byId('tx_from').value || byId('date').value;
-      const dt = byId('tx_to').value   || byId('date').value;
-      const s  = byId('store').value;
+      const dt = byId('tx_to').value || byId('date').value;
+      const s = byId('store').value;
       const q = {dateFrom: df, dateTo: dt, store: s, limit: 200};
-      google.script.run.withSuccessHandler(drawTx).withFailureHandler(err=>{
-        // при грешка – изчисти таблицата и покажи съобщение
-        byId('tx_rows').innerHTML = `<tr><td colspan="12" class="muted">Грешка: ${(err && err.message) || err}</td></tr>`;
-      }).listTransactions(q);
+      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>{ alert(e.message||e); drawTx([]); }).listTransactions(q);
     }
 
-    // ===== renderers =====
     function drawSummary(s){
-      if(!s || !s.sales || !s.expenses){ byId('summary').innerHTML=''; byId('summary_note').textContent=''; return; }
+      if(!s){ byId('summary').innerHTML=''; byId('summary_note').textContent=''; return;}
+      const el = byId('summary');
       const parts = [
         {label:'Продажби – Каса', v: s.sales.CASH||0},
         {label:'Продажби – Карта', v: s.sales.CARD||0},
@@ -487,50 +474,42 @@
         {label:'Разходи – Карта', v: s.expenses.CARD||0},
         {label:'Разходи – Банка', v: s.expenses.BANK||0},
       ];
-      byId('summary').innerHTML = parts.map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span> <span class="v">${money(p.v)} лв</span></div></div>`).join('');
-      byId('summary_note').textContent = `Очаквани пари в каса: ${money(s.expectedCash||0)} лв`;
+      el.innerHTML = parts.map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span> <span class="v">${money(p.v)} лв</span></div></div>`).join('');
+      byId('summary_note').textContent = `Очаквани пари в каса: ${money(s.expectedCash)} лв`;
     }
 
     function drawTx(rows){
-      rows = asArray(rows);
+      const list = Array.isArray(rows) ? rows : [];
       const tb = byId('tx_rows');
-      if(rows.length === 0){
-        tb.innerHTML = '<tr><td colspan="12" class="muted">Няма операции за избрания период.</td></tr>';
-        return;
-      }
-      tb.innerHTML = rows.map(r=>{
-        const ts = r && r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '';
-        const fileLink = r && r.doc_file_url ? `<a href="${r.doc_file_url}" target="_blank">док.</a>` : '';
-        return `<tr>
-          <td>${ts}</td>
-          <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
-          <td>${r.method||''}</td>
-          <td>${r.category||''}</td>
-          <td>${r.supplier||''}</td>
-          <td>${DOC_LABEL[r.doc_type]||''}</td>
-          <td>${r.doc_number||''}</td>
-          <td>${r.doc_date||''}</td>
-          <td>${r.description||''}</td>
-          <td>${fileLink}</td>
-          <td>${money(r.amount)}</td>
-          <td class="muted">${r.user||''}</td>
-        </tr>`;
-      }).join('');
+      tb.innerHTML = list.map(r=>`<tr>
+        <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : ''}</td>
+        <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
+        <td>${r.method||''}</td>
+        <td>${r.category||''}</td>
+        <td>${r.supplier||''}</td>
+        <td>${r.doc_type ? (DOC_LABEL[r.doc_type]||r.doc_type) : ''}</td>
+        <td>${r.doc_number||''}</td>
+        <td>${r.doc_date||''}</td>
+        <td>${r.description||''}</td>
+        <td>${money(r.amount)}</td>
+        <td class="muted">${r.user||''}</td>
+      </tr>`).join('');
     }
 
     function generateReport(){
       const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
-      google.script.run.withSuccessHandler(drawReport).withFailureHandler(err=>{
-        alert((err && err.message) || err);
-      }).getReportData(q);
+      google.script.run.withSuccessHandler(drawReport).withFailureHandler(err=>alert(err.message||err)).getReportV2(q);
     }
 
     function exportReport(){
       const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
       google.script.run.withSuccessHandler(blob=>{
         const url = 'data:text/csv;charset=utf-8,' + encodeURIComponent(blob.getDataAsString());
-        const a = document.createElement('a'); a.href = url; a.download = blob.getName(); document.body.appendChild(a); a.click(); a.remove();
-      }).withFailureHandler(err=>alert((err && err.message) || err)).exportReportCsv(q);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.getName();
+        document.body.appendChild(a); a.click(); a.remove();
+      }).withFailureHandler(err=>alert(err.message||err)).exportReportCsvV2(q);
     }
 
     function drawReport(r){
@@ -543,16 +522,14 @@
       const tblClose = byId('rep_tbl_closings');
       const recent = byId('rep_recent_rows');
 
-      // reset
-      kpiEl.innerHTML = ''; tblM.innerHTML=''; tblCI.innerHTML=''; tblCE.innerHTML='';
-      tblDoc.innerHTML=''; tblSup.innerHTML=''; tblClose.innerHTML=''; recent.innerHTML='';
-
-      if(!r || !r.kpi){
-        alert('Няма данни или достъпът е отказан (PIN).');
+      if(!r){
+        kpiEl.innerHTML = tblM.innerHTML = tblCI.innerHTML = tblCE.innerHTML = tblDoc.innerHTML = tblSup.innerHTML = tblClose.innerHTML = '';
+        recent.innerHTML = '';
+        alert('Няма данни за справка');
         return;
       }
 
-      const k = r.kpi;
+      const k = r.kpi || {income_total:0,expense_total:0,net:0,tx_count:0};
       kpiEl.innerHTML = [
         {label:'Общ приход',v:k.income_total},
         {label:'Общ разход',v:k.expense_total},
@@ -560,26 +537,25 @@
         {label:'Брой операции',v:k.tx_count}
       ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
 
-      const methods = Object.keys((r.byMethod && r.byMethod.income) || {});
-      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' +
-        methods.map(m=>`<tr><td>${m}</td><td>${money(r.byMethod.income[m])}</td><td>${money(r.byMethod.expense[m])}</td></tr>`).join('');
+      const methods = (r.byMethod||[]).map(m=>`<tr><td>${m.method}</td><td>${money(m.income)}</td><td>${money(m.expense)}</td></tr>`).join('');
+      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' + methods;
 
       tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        asArray(r.byCategory && r.byCategory.income).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+        (r.byCatIncome||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
       tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        asArray(r.byCategory && r.byCategory.expense).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+        (r.byCatExpense||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
       tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' +
-        asArray(r.expenseByDocType).map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+        (r.expenseByDocType||[]).map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
 
       tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' +
-        asArray(r.suppliersTop).map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+        (r.suppliersTop||[]).map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
 
       tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
-        asArray(r.closings).map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
+        (r.closings||[]).map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
 
-      recent.innerHTML = asArray(r.recentTx).map(t=>`<tr>
+      recent.innerHTML = (r.recentTx||[]).map(t=>`<tr>
         <td>${t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : ''}</td>
         <td>${t.date||''}</td>
         <td>${t.store||''}</td>
@@ -587,20 +563,17 @@
         <td>${t.method||''}</td>
         <td>${t.category||''}</td>
         <td>${t.supplier||''}</td>
-        <td>${DOC_LABEL[t.doc_type]||t.doc_type||''}</td>
+        <td>${t.doc_type ? (DOC_LABEL[t.doc_type]||t.doc_type) : ''}</td>
         <td>${t.doc_number||''}</td>
         <td>${t.doc_date||''}</td>
         <td>${t.description||''}</td>
-        <td>${t.doc_file_url ? `<a href="${t.doc_file_url}" target="_blank">док.</a>` : ''}</td>
         <td>${money(t.amount)}</td>
         <td class="muted">${t.user||''}</td>
       </tr>`).join('');
     }
 
-    // ===== boot =====
-    google.script.run.withSuccessHandler(fillMeta).withFailureHandler(err=>{
-      alert('Инициализацията се провали: ' + ((err && err.message) || err));
-    }).getMeta();
+    // boot
+    google.script.run.withSuccessHandler(fillMeta).getMeta();
     byId('tx_type').addEventListener('change', onTypeChange);
   </script>
 </body>
