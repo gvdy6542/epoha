@@ -559,3 +559,67 @@ function toDateOnly_(v){
 function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
+
+/** ===================== TELEGRAM BOT ===================== **/
+const TG_TOKEN   = PropertiesService.getScriptProperties().getProperty('TG_TOKEN');
+const TG_ALLOWED = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '').split(',').filter(Boolean);
+const TG_API     = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
+
+function doPost(e){
+  if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
+  const update = JSON.parse(e.postData.contents || '{}');
+  const msg = update.message;
+  if(!msg || !msg.text) return ContentService.createTextOutput('ok');
+  const chatId = String(msg.chat.id);
+  if(TG_ALLOWED.length && !TG_ALLOWED.includes(chatId)){
+    telegramSend_(chatId, 'Нямате права за достъп');
+    return ContentService.createTextOutput('ok');
+  }
+  const text = msg.text.trim();
+  try{
+    let m;
+    if((m = text.match(/^\/prihod\s+(\d+(?:\.\d+)?)\s+(.+)/i))){
+      const [, amount, desc] = m;
+      addTransaction({
+        date: new Date().toISOString().slice(0,10),
+        type: 'INCOME',
+        method: 'CASH',
+        amount,
+        description: desc
+      });
+      telegramSend_(chatId, 'Приход записан');
+    }else if((m = text.match(/^\/razhod\s+(\d+(?:\.\d+)?)\s+(.+)/i))){
+      const [, amount, desc] = m;
+      addTransaction({
+        date: new Date().toISOString().slice(0,10),
+        type: 'EXPENSE',
+        method: 'CASH',
+        amount,
+        supplier: 'Доставчик',
+        doc_type: 'OTHER',
+        description: desc
+      });
+      telegramSend_(chatId, 'Разход записан');
+    }else if((m = text.match(/^\/spravka\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})/i))){
+      const [, from, to] = m;
+      const res = getReportV2({dateFrom: from, dateTo: to});
+      const k = res.kpi;
+      telegramSend_(chatId, `Приход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
+    }else{
+      telegramSend_(chatId, 'Непозната команда');
+    }
+  }catch(err){
+    telegramSend_(chatId, 'Грешка: ' + err.message);
+  }
+  return ContentService.createTextOutput('ok');
+}
+
+function telegramSend_(chatId, text){
+  if(!TG_API) return;
+  UrlFetchApp.fetch(`${TG_API}/sendMessage`, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({ chat_id: chatId, text })
+  });
+}
+
