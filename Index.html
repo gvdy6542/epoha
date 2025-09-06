@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Уеб интерфейс към таблицата</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa}
+    .wrap{max-width:1150px;margin:24px auto;padding:0 16px}
+    .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+    input,select,button{border-radius:8px;border:1px solid #d0d7de;padding:8px 10px}
+    button.primary{background:#0d6efd;color:#fff;border-color:#0d6efd;cursor:pointer}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{padding:10px;border-bottom:1px solid #eee;font-size:14px}
+    th{background:#f0f6ff;cursor:pointer}
+    tr:hover td{background:#fafbfc}
+    .muted{color:#6a737d}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+    .modalBack{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center}
+    .modal{width:720px;background:#fff;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+    .modal h3{margin:0 0 10px 0}
+    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    .right{text-align:right}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <input id="search" placeholder="Търсене...">
+      <select id="limit">
+        <option>25</option><option selected>50</option><option>100</option>
+      </select>
+      <button class="primary" onclick="reload()">Презареди</button>
+      <button onclick="openCreate()">+ Нов ред</button>
+      <span id="total" class="muted"></span>
+      <span class="pill">Сортира: <b id="sortInfo">няма</b></span>
+      <button onclick="callCustom()" title="Викай съществуваща функция от скрипта">Run Custom()</button>
+    </div>
+
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <div>
+        <button onclick="prevPage()">Назад</button>
+        <button onclick="nextPage()">Напред</button>
+      </div>
+      <div class="muted" id="pageInfo"></div>
+    </div>
+  </div>
+
+  <!-- Модал -->
+  <div class="modalBack" id="mb">
+    <div class="modal">
+      <h3 id="modalTitle">Ред</h3>
+      <div id="form" class="grid"></div>
+      <div class="actions">
+        <button class="primary" onclick="save()">Запази</button>
+        <button onclick="closeModal()">Затвори</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let headers = [];
+    let formulaCols = [];
+    let validations = [];
+    let state = { offset:0, limit:50, search:'', sortBy:'', sortDir:'asc', rows:[], total:0 };
+    let editRow = null;
+
+    const $ = sel => document.querySelector(sel);
+
+    function init(){
+      google.script.run.withSuccessHandler(meta=>{
+        headers = meta.headers||[];
+        formulaCols = meta.formulaCols||[];
+        validations = meta.validations||[];
+
+        // рендер заглавки
+        const tr = document.createElement('tr');
+        headers.forEach(h=>{
+          const th = document.createElement('th');
+          th.textContent = h + (formulaCols[headers.indexOf(h)] ? ' ∑' : '');
+          th.onclick = ()=>toggleSort(h);
+          tr.appendChild(th);
+        });
+        const thA = document.createElement('th'); thA.textContent='Действия'; tr.appendChild(thA);
+        $('#thead').innerHTML=''; $('#thead').appendChild(tr);
+        reload();
+      }).getMeta();
+
+      $('#search').addEventListener('input', debounce(()=>{
+        state.search = $('#search').value.trim();
+        state.offset = 0;
+        reload();
+      }, 350));
+
+      $('#limit').addEventListener('change', ()=>{
+        state.limit = parseInt($('#limit').value,10);
+        state.offset = 0;
+        reload();
+      });
+    }
+
+    function reload(){
+      google.script.run.withSuccessHandler(render).fetchRows({
+        offset: state.offset, limit: state.limit,
+        search: state.search, sortBy: state.sortBy, sortDir: state.sortDir
+      });
+    }
+
+    function render(res){
+      state.rows = res.rows||[]; state.total = res.total||0;
+      $('#total').textContent = `Общо: ${state.total}`;
+      $('#sortInfo').textContent = state.sortBy ? `${state.sortBy} (${state.sortDir})` : 'няма';
+
+      const tb = $('#tbody'); tb.innerHTML='';
+      state.rows.forEach(row=>{
+        const tr = document.createElement('tr');
+        headers.forEach((h,i)=>{
+          const td = document.createElement('td');
+          td.textContent = row[h] ?? '';
+          if (!isNaN(parseFloat(row[h]))) td.classList.add('right');
+          tr.appendChild(td);
+        });
+        const act = document.createElement('td');
+        act.innerHTML = `
+          <button onclick='onEdit(${encodeRow(row)})'>Редакция</button>
+          <button onclick='onDelete("${String(row["ID"]||"")}")'>Изтрий</button>
+        `;
+        tr.appendChild(act);
+        tb.appendChild(tr);
+      });
+
+      const from = state.total ? state.offset+1 : 0;
+      const to = Math.min(state.offset+state.limit, state.total);
+      $('#pageInfo').textContent = state.total ? `${from}–${to} от ${state.total}` : '0/0';
+    }
+
+    function encodeRow(row){ return JSON.stringify(row).replace(/"/g,'&quot;'); }
+    function decodeRow(s){ return JSON.parse(s.replace(/&quot;/g,'"')); }
+
+    function toggleSort(col){
+      if (state.sortBy===col) state.sortDir = state.sortDir==='asc' ? 'desc' : 'asc';
+      else { state.sortBy = col; state.sortDir = 'asc'; }
+      state.offset = 0; reload();
+    }
+    function prevPage(){ if (state.offset===0) return; state.offset = Math.max(0, state.offset-state.limit); reload(); }
+    function nextPage(){ if (state.offset+state.limit>=state.total) return; state.offset += state.limit; reload(); }
+
+    function openCreate(){
+      editRow = {};
+      headers.forEach(h=> editRow[h] = '');
+      showForm('Нов ред', editRow);
+    }
+    function onEdit(s){
+      editRow = decodeRow(s);
+      showForm(`Редакция #${editRow['ID']||''}`, editRow);
+    }
+
+    function showForm(title, obj){
+      $('#modalTitle').textContent = title;
+      const form = $('#form'); form.innerHTML = '';
+      headers.forEach((h,i)=>{
+        const isFormula = formulaCols[i];
+        const v = obj[h] ?? '';
+        const wrap = document.createElement('div');
+        if (validations[i] && validations[i].type==='list' && validations[i].values.length){
+          const opts = validations[i].values.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('');
+          wrap.innerHTML = `<label>${h}</label><select data-col="${h}" ${isFormula?'disabled':''}>${opts}</select>`;
+        } else {
+          wrap.innerHTML = `<label>${h}</label><input data-col="${h}" value="${v}" ${isFormula?'disabled':''}>`;
+        }
+        form.appendChild(wrap);
+      });
+      $('#mb').style.display='flex';
+    }
+    function closeModal(){ $('#mb').style.display='none'; }
+
+    function save(){
+      const inputs = [...document.querySelectorAll('#form [data-col]')];
+      const row = {};
+      inputs.forEach(el=> row[el.dataset.col] = el.value);
+      google.script.run.withSuccessHandler(()=>{ closeModal(); reload(); })
+        .withFailureHandler(e=>alert(e && e.message ? e.message : e))
+        .upsertRows([row]);
+    }
+
+    function onDelete(id){
+      if (!id) return alert('Липсва ID.');
+      if (!confirm('Изтриване на реда?')) return;
+      google.script.run.withSuccessHandler(()=>reload())
+        .withFailureHandler(e=>alert(e && e.message ? e.message : e))
+        .deleteRowsByIds([id]);
+    }
+
+    // Викай готова функция от текущия Apps Script (ако имаш такава)
+    function callCustom(){
+      const fn = prompt('Име на функция за изпълнение (глобална):');
+      if (!fn) return;
+      const args = prompt('JSON масив с аргументи (по избор):', '[]');
+      let parsed = [];
+      try { parsed = JSON.parse(args||'[]'); } catch(_){}
+      google.script.run.withSuccessHandler(res=>alert('OK: '+JSON.stringify(res)))
+        .withFailureHandler(e=>alert('Грешка: ' + (e && e.message ? e.message : e)))
+        .runCustom(fn, parsed);
+    }
+
+    function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+    init();
+  </script>
+</body>
+</html>
