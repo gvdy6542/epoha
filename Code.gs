@@ -422,6 +422,7 @@ function exportReportCsv(query){
   ensureSheets_();
   if(!isReportAllowed_()) throw new Error('Unauthorized');
   const data = getReportData(query);
+  if(!data || !data.kpi) throw new Error('No report data');
   const lines = [];
   const csvCell_ = v => `"${String(v||'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
   lines.push(`Период от,${data.range.from},до,${data.range.to},Магазин,${data.range.store}`);
