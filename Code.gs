@@ -569,6 +569,19 @@ function round2_(n){
 const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← смени с нов токен от BotFather
 const TG_API = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 
+const TG_STATE_PREFIX = 'TG_STATE_';
+
+function getChatState_(id){
+  const v = PropertiesService.getScriptProperties().getProperty(TG_STATE_PREFIX+id);
+  return v ? JSON.parse(v) : null;
+}
+function setChatState_(id, state){
+  PropertiesService.getScriptProperties().setProperty(TG_STATE_PREFIX+id, JSON.stringify(state));
+}
+function clearChatState_(id){
+  PropertiesService.getScriptProperties().deleteProperty(TG_STATE_PREFIX+id);
+}
+
 function doPost(e){
   try{
     if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
@@ -596,7 +609,8 @@ function doPost(e){
     let m;
 
     if ((m = text.match(/^\/start\b/i))) {
-      telegramSend_(chatId, 'Здравей! Ползвай /prihod, /razhod или /spravka YYYY-MM-DD YYYY-MM-DD', {
+      clearChatState_(chatId);
+      telegramSend_(chatId, 'Здравей! Използвай бутоните или командите /prihod, /razhod, /spravka', {
         reply_markup: {
           keyboard: [
             [{ text: 'Приход' }, { text: 'Разход' }],
@@ -605,15 +619,43 @@ function doPost(e){
           resize_keyboard: true
         }
       });
+      return ContentService.createTextOutput('ok');
     }
-    else if (/^приход$/i.test(text)) {
-      telegramSend_(chatId, 'Въведи приход така: /prihod сума описание');
+
+    if (/^\/cancel$/i.test(text)) {
+      clearChatState_(chatId);
+      telegramSend_(chatId, 'Операцията е отменена.');
+      return ContentService.createTextOutput('ok');
+    }
+
+    const state = getChatState_(chatId);
+    if (state) {
+      handleChatState_(chatId, state, text);
+      return ContentService.createTextOutput('ok');
+    }
+
+    if (/^приход$/i.test(text)) {
+      setChatState_(chatId, {action:'income', step:'amount'});
+      telegramSend_(chatId, 'Въведи сума за приход:');
     }
     else if (/^разход$/i.test(text)) {
-      telegramSend_(chatId, 'Въведи разход така: /razhod сума описание');
+      setChatState_(chatId, {action:'expense', step:'supplier'});
+      const suppliers = listSuppliers();
+      if (suppliers.length) {
+        telegramSend_(chatId, 'Избери доставчик:', {
+          reply_markup: {
+            keyboard: suppliers.map(s=>[{text:s}]),
+            one_time_keyboard: true,
+            resize_keyboard: true
+          }
+        });
+      } else {
+        telegramSend_(chatId, 'Въведи доставчик:');
+      }
     }
     else if (/^справка$/i.test(text)) {
-      telegramSend_(chatId, 'Ползвай /spravka YYYY-MM-DD YYYY-MM-DD');
+      setChatState_(chatId, {action:'report', step:'from'});
+      telegramSend_(chatId, 'Въведи начална дата (YYYY-MM-DD):');
     }
     else if ((m = text.match(/^\/prihod\s+(\d+(?:[.,]\d+)?)\s+(.+)/i))) {
       const amount = Number(m[1].replace(',','.'));
@@ -661,6 +703,150 @@ function doPost(e){
       telegramSend_(chatId, 'Грешка: ' + (err.message || err));
     } catch(_) {}
     return ContentService.createTextOutput('ok');
+  }
+}
+
+function handleChatState_(chatId, state, text){
+  if(state.action === 'income'){
+    if(state.step === 'amount'){
+      const amount = Number(text.replace(',','.'));
+      if(isNaN(amount)){
+        telegramSend_(chatId, 'Невалидна сума. Опитай пак:');
+        return;
+      }
+      state.amount = amount;
+      state.step = 'description';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Въведи описание:');
+    }
+    else if(state.step === 'description'){
+      state.description = text;
+      state.step = 'method';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Избери начин на плащане:', {
+        reply_markup: {
+          keyboard: DEFAULT_METHODS.map(m=>[{text:m}]),
+          one_time_keyboard: true,
+          resize_keyboard: true
+        }
+      });
+    }
+    else if(state.step === 'method'){
+      const method = text.toUpperCase();
+      if(!DEFAULT_METHODS.includes(method)){
+        telegramSend_(chatId, 'Невалиден метод. Опитай пак:');
+        return;
+      }
+      addTransaction({
+        date: new Date().toISOString().slice(0,10),
+        type: 'INCOME',
+        method,
+        amount: state.amount,
+        description: state.description
+      });
+      telegramSend_(chatId, `Приход записан: ${state.amount.toFixed(2)} лв – ${state.description}`);
+      clearChatState_(chatId);
+    }
+  }
+  else if(state.action === 'expense'){
+    if(state.step === 'supplier'){
+      state.supplier = text;
+      state.step = 'doc_type';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Избери тип документ:', {
+        reply_markup: {
+          keyboard: DOC_TYPES.map(d=>[{text:d}]),
+          one_time_keyboard: true,
+          resize_keyboard: true
+        }
+      });
+    }
+    else if(state.step === 'doc_type'){
+      const dt = text.toUpperCase();
+      if(!DOC_TYPES.includes(dt)){
+        telegramSend_(chatId, 'Невалиден тип документ. Опитай пак:');
+        return;
+      }
+      state.doc_type = dt;
+      if(['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(dt)){
+        state.step = 'doc_number';
+        setChatState_(chatId, state);
+        telegramSend_(chatId, 'Въведи номер на документ:');
+      } else {
+        state.step = 'amount';
+        setChatState_(chatId, state);
+        telegramSend_(chatId, 'Въведи сума:');
+      }
+    }
+    else if(state.step === 'doc_number'){
+      state.doc_number = text;
+      state.step = 'amount';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Въведи сума:');
+    }
+    else if(state.step === 'amount'){
+      const amount = Number(text.replace(',','.'));
+      if(isNaN(amount)){
+        telegramSend_(chatId, 'Невалидна сума. Опитай пак:');
+        return;
+      }
+      state.amount = amount;
+      state.step = 'method';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Избери начин на плащане:', {
+        reply_markup: {
+          keyboard: DEFAULT_METHODS.map(m=>[{text:m}]),
+          one_time_keyboard: true,
+          resize_keyboard: true
+        }
+      });
+    }
+    else if(state.step === 'method'){
+      const method = text.toUpperCase();
+      if(!DEFAULT_METHODS.includes(method)){
+        telegramSend_(chatId, 'Невалиден метод. Опитай пак:');
+        return;
+      }
+      addTransaction({
+        date: new Date().toISOString().slice(0,10),
+        type: 'EXPENSE',
+        method,
+        amount: state.amount,
+        supplier: state.supplier,
+        doc_type: state.doc_type,
+        doc_number: state.doc_number || '',
+        doc_date: new Date().toISOString().slice(0,10)
+      });
+      telegramSend_(chatId, `Разход записан: ${state.amount.toFixed(2)} лв – ${state.supplier}`);
+      clearChatState_(chatId);
+    }
+  }
+  else if(state.action === 'report'){
+    if(state.step === 'from'){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(text)){
+        telegramSend_(chatId, 'Невалидна дата. Формат YYYY-MM-DD');
+        return;
+      }
+      state.from = text;
+      state.step = 'to';
+      setChatState_(chatId, state);
+      telegramSend_(chatId, 'Въведи крайна дата (YYYY-MM-DD):');
+    }
+    else if(state.step === 'to'){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(text)){
+        telegramSend_(chatId, 'Невалидна дата. Формат YYYY-MM-DD');
+        return;
+      }
+      const from = state.from;
+      const to = text;
+      const r = getReportV2({dateFrom: from, dateTo: to});
+      const k = r?.kpi || { income_total:0, expense_total:0, net:0 };
+      telegramSend_(chatId, `Период ${from} → ${to}\nПриход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
+      clearChatState_(chatId);
+    }
+  }
+  else{
+    clearChatState_(chatId);
   }
 }
 
