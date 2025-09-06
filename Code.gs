@@ -878,12 +878,12 @@ function getWebhookInfo_TG(){
 }
 
 function setAllowedChats_TG(){
-  PropertiesService.getScriptProperties().setProperty('TG_ALLOWED', '123456789,987654321');
+  PropertiesService.getScriptProperties().setProperty('TG_ALLOWED', '1045317263');
   Logger.log('TG_ALLOWED записан.');
 }
 
 function setAdmins_TG(){
-  PropertiesService.getScriptProperties().setProperty('TG_ADMINS', '123456789');
+  PropertiesService.getScriptProperties().setProperty('TG_ADMINS', '1045317263,');
   Logger.log('TG_ADMINS записан.');
 }
 // <<< TELEGRAM BOT <<<
