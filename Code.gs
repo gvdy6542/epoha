@@ -1,221 +1,324 @@
+/** ===================== CONFIG ===================== **/
+const TZ      = 'Europe/Sofia';
+const SS_ID   = SpreadsheetApp.getActive().getId();
+const SH_TX   = 'Transactions';     // Операции (приход/разход)
+const SH_CNT  = 'CashCounts';       // Броене на каса по деноминации
+const SH_DAY  = 'DayClosings';      // Дневни отчети / приключване
+const SH_SET  = 'Settings';         // Настройки (по избор)
+const SH_USERS= 'Users';            // Потребители (по избор)
 
+const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
+const DEFAULT_METHODS = ['CASH','CARD','BANK'];
+const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
+const DEFAULT_SUPPLIERS = [
+  'Рико ЕООД',
+  'МЕТРО КЕШ ЕНД КЕРИ БЪЛГАРИЯ ЕООД',
+  'РОЖЕН-1 ЕООД',
+  'КОКА КОЛА ХБК БЪЛГАРИЯ'
+];
+const DEFAULT_DOC_TYPES = ['Фактура','Кредитно','Стокова'];
 
-
-// Глобални променливи
-var countdownTime = 30; // 30 секунди
-var countdownTriggerId; // Идентификатор на тригера за обратния брояч
-
-// Глобална променлива за предишната стойност на оборота
-var last_оборот = ""; // Запомня предишната стойност на оборота
-
-// Основна функция за зареждане на уеб приложението
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index');
+/** ===================== WEB APP & MENU ===================== **/
+function onOpen(){
+  SpreadsheetApp.getUi()
+    .createMenu('Отчитане')
+    .addItem('Отвори приложението', 'showWebApp_')
+    .addToUi();
 }
 
-// Позволява извикване на произволна глобална функция по име
-function runCustom(fnName, args) {
-  var fn = this[fnName];
-  if (typeof fn !== 'function') {
-    throw new Error('Функцията от скрипта не е открита: ' + fnName);
-  }
-  return fn.apply(null, args || []);
+function showWebApp_(){
+  const html = HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Отчитане на магазин')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setWidth(1200)
+    .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
 }
 
-function onEdit(e) {
-  if (!e || !e.range) return;
+function doGet(){
+  ensureSheets_();
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Отчитане на магазин')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
 
-  var sheet = e.source.getActiveSheet();
-  var editedCell = e.range;
-  var rowIndex = editedCell.getRow();
-  
-  // Проверка дали променената клетка е H4, I4, J4 или K4
-  if (rowIndex === 4 && (editedCell.getA1Notation() == 'H4' || editedCell.getA1Notation() == 'I4' || editedCell.getA1Notation() == 'J4' || editedCell.getA1Notation() == 'K4')) {
-    var searchDate = sheet.getRange('H4').getValue();
-    Logger.log("Въведена дата: " + searchDate);
-    
-    if (searchDate instanceof Date) {
-      // Намираме диапазона с датите в колона A
-      var dateRange = sheet.getRange('A:A');
-      var values = dateRange.getValues();
-      Logger.log("Търсене на съвпадение в колона A");
+/** ===================== PUBLIC API (called from UI) ===================== **/
+function getMeta(){
+  ensureSheets_();
+  const set = getSheet_(SH_SET);
+  const meta = {
+    denoms: DEFAULT_DENOMS.slice(),
+    methods: DEFAULT_METHODS.slice(),
+    types: DEFAULT_TYPES.slice(),
+    stores: ['Основен'],
+    categories: {
+      INCOME: ['Продажби', 'Друг приход'],
+      EXPENSE: ['Стока', 'Наем', 'Комунални', 'Касови разходи', 'Друго']
+    },
+    suppliers: DEFAULT_SUPPLIERS.slice(),
+    docTypes: DEFAULT_DOC_TYPES.slice()
+  };
 
-      // Търсим съвпадение на датата
-      for (var i = 0; i < values.length; i++) {
-        if (values[i][0] instanceof Date && values[i][0].getTime() === searchDate.getTime()) {
-          Logger.log("Намерена дата на ред: " + (i + 1));
-          
-          // Вземаме стойностите от ред 4 (H4, I4, J4, K4)
-          var valueI = sheet.getRange(4, 9).getValue(); // Колона I, ред 4
-          var valueJ = sheet.getRange(4, 10).getValue(); // Колона J, ред 4
-          var valueK = sheet.getRange(4, 11).getValue(); // Колона K, ред 4
-          
-          Logger.log("Стойности - I: " + valueI + ", J: " + valueJ + ", K: " + valueK);
-          
-          // Проверка и прехвърляне на стойности в C, D и F
-          if (sheet.getRange(i + 1, 3).getValue() !== valueI) {
-            sheet.getRange(i + 1, 3).setValue(valueI); // Колона C
-          }
-          if (sheet.getRange(i + 1, 4).getValue() !== valueJ) {
-            sheet.getRange(i + 1, 4).setValue(valueJ); // Колона D
-          }
-          if (sheet.getRange(i + 1, 6).getValue() !== valueK) {
-            sheet.getRange(i + 1, 6).setValue(valueK); // Колона F
-          }
+  // Позволи override от Settings (key/value)
+  const rows = set.getLastRow() > 1 ? set.getRange(2,1,set.getLastRow()-1,2).getValues() : [];
+  const map = {};
+  rows.forEach(r=> map[String(r[0]||'').trim()] = String(r[1]||'').trim());
+  if(map.DENOMS){ try{ meta.denoms = JSON.parse(map.DENOMS); }catch(e){} }
+  if(map.METHODS){ try{ meta.methods = JSON.parse(map.METHODS); }catch(e){} }
+  if(map.STORES){ try{ meta.stores = JSON.parse(map.STORES); }catch(e){} }
+  if(map.CAT_INCOME){ try{ meta.categories.INCOME = JSON.parse(map.CAT_INCOME); }catch(e){} }
+  if(map.CAT_EXPENSE){ try{ meta.categories.EXPENSE = JSON.parse(map.CAT_EXPENSE); }catch(e){} }
+  if(map.SUPPLIERS){ try{ meta.suppliers = JSON.parse(map.SUPPLIERS); }catch(e){} }
+  if(map.DOC_TYPES){ try{ meta.docTypes = JSON.parse(map.DOC_TYPES); }catch(e){} }
 
-          // Записване на текущото време в Z1
-          sheet.getRange('Z1').setValue(new Date().getTime()); // Време на последната редакция
+  return meta;
+}
 
-          // Проверка дали I4 и J4 имат стойности
-          if (valueI && valueJ) {
-            clearCells(); // Изчистване на клетките H4:K4
-          }
-
-          break; // Прекратяване на цикъла след прехвърлянето
-        }
-      }
-    } else {
-      Logger.log("Не е въведена дата.");
+function addSupplier(name){
+  ensureSheets_();
+  const n = String(name||'').trim();
+  if(!n) throw new Error('Липсва име на доставчик');
+  const set = getSheet_(SH_SET);
+  let rowIndex = null;
+  const last = set.getLastRow();
+  for(let i=2;i<=last;i++){
+    if(String(set.getRange(i,1).getValue()).trim() === 'SUPPLIERS'){
+      rowIndex = i; break;
     }
   }
-  
-  // Проверка дали O11 или O12 са променени
-  if (editedCell.getA1Notation() === 'O11' || editedCell.getA1Notation() === 'O12') {
-    transferData(); // Прехвърляне на данни
+  let arr = DEFAULT_SUPPLIERS.slice();
+  if(rowIndex){
+    try{ arr = JSON.parse(set.getRange(rowIndex,2).getValue()||'[]'); }catch(e){ arr = []; }
+  }else{
+    rowIndex = last+1;
+  }
+  if(!arr.includes(n)) arr.push(n);
+  set.getRange(rowIndex,1,1,2).setValues([['SUPPLIERS', JSON.stringify(arr)]]);
+  return {suppliers: arr};
+}
+
+function addTransaction(payload){
+  ensureSheets_();
+  // payload: {date, store, type, method, supplier, docType, category, description, amount}
+  const required = ['date','store','type','method','amount'];
+  required.forEach(k => { if(payload[k] === undefined || payload[k] === null || payload[k] === '') throw new Error('Липсва поле: '+k); });
+
+  const type = String(payload.type||'').toUpperCase();
+  if(!DEFAULT_TYPES.includes(type)) throw new Error('Невалиден тип (INCOME/EXPENSE)');
+
+  const method = String(payload.method||'').toUpperCase();
+  if(!getMeta().methods.includes(method)) throw new Error('Невалиден метод на плащане');
+
+  const amount = Number(payload.amount);
+  if(isNaN(amount)) throw new Error('Сумата не е число');
+
+  if(type === 'EXPENSE'){
+    if(!payload.supplier) throw new Error('Липсва доставчик');
+    if(!payload.docType) throw new Error('Липсва вид документ');
   }
 
-  // Проверка за днешната дата от K1 и извеждане на информация в H15
-  if (editedCell.getA1Notation() === 'K1') {
-    var today = new Date(sheet.getRange('K1').getValue()); // Преобразуване на стойността в дата
-    Logger.log("Днешната дата: " + today);
-    
-    var dateRange = sheet.getRange('A:A');
-    var values = dateRange.getValues();
-    var found = false;
+  const dateOnly = toDateOnly_(payload.date);
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
 
-    for (var i = 0; i < values.length; i++) {
-      if (values[i][0] instanceof Date && values[i][0].getTime() === today.getTime()) {
-        Logger.log("Намерена дата на ред: " + (i + 1)); // Добавен лог
-        var оборот = sheet.getRange(i + 1, 2).getValue(); // Взимаме стойността от колона B на съответния ред
-        Logger.log("Оборот от колона B: " + оборот); // Добавен лог
-        sheet.getRange('H15').setValue("Вашия оборот за " + today.toLocaleDateString() + " е: " + оборот);
-        sheet.getRange('J15').setValue(оборот); // Прехвърляне на стойността в J15
-        sheet.getRange('K15').setValue(оборот); // Прехвърляне на стойността в K15
-        last_оборот = оборот; // Запомняне на последната стойност на оборота
-        found = true;
-        break;
-      }
+  const sh = getSheet_(SH_TX);
+  sh.appendRow([
+    new Date(),                    // timestamp
+    dateOnly,                      // date (yyyy-mm-dd)
+    payload.store || 'Основен',    // store
+    type,                          // type
+    method,                        // method
+    type === 'EXPENSE' ? (payload.supplier || '') : '', // supplier
+    type === 'EXPENSE' ? (payload.docType || '') : '',  // doc type
+    payload.category || '',        // category
+    payload.description || '',     // description
+    round2_(amount),               // amount
+    user                           // user
+  ]);
+  return {ok:true};
+}
+
+function listTransactions(query){
+  // query: {dateFrom, dateTo, store, limit}
+  ensureSheets_();
+  const sh = getSheet_(SH_TX);
+  const last = sh.getLastRow();
+  if(last < 2) return [];
+  const data = sh.getRange(2,1,last-1,11).getValues();
+  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
+  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const store = query?.store || null;
+  let rows = data.filter(r => {
+    const date = r[1]; // yyyy-mm-dd
+    const st = r[2];
+    let ok = true;
+    if(df && date < df) ok = false;
+    if(dt && date > dt) ok = false;
+    if(store && st !== store) ok = false;
+    return ok;
+  });
+  // по-новите най-отгоре
+  rows.sort((a,b)=> new Date(b[0]).getTime()-new Date(a[0]).getTime());
+  const lim = Math.min(Number(query?.limit||200), 1000);
+  rows = rows.slice(0, lim);
+
+  // map към обекти
+  return rows.map(r=>({
+    timestamp: r[0], date: r[1], store: r[2], type: r[3], method: r[4],
+    supplier: r[5], docType: r[6], category: r[7], description: r[8], amount: r[9], user: r[10]
+  }));
+}
+
+function saveCashCount(payload){
+  // payload: {date, store, counts: {denom: qty}}
+  ensureSheets_();
+  const meta = getMeta();
+  const sh = getSheet_(SH_CNT);
+  const dateOnly = toDateOnly_(payload.date);
+  const store = payload.store || 'Основен';
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+
+  // Подредба на деноминациите според meta.denoms
+  const denoms = meta.denoms;
+  let total = 0;
+  const qtys = denoms.map(d => {
+    const q = Number(payload.counts?.[String(d)]||0);
+    total += d * q;
+    return q;
+  });
+
+  sh.appendRow([
+    new Date(),          // timestamp
+    dateOnly,
+    store,
+    ...qtys,
+    round2_(total),
+    user
+  ]);
+  return {ok:true, total: round2_(total)};
+}
+
+function getDailySummary(date, store){
+  ensureSheets_();
+  const dateOnly = toDateOnly_(date);
+  const tx = listTransactions({dateFrom: dateOnly, dateTo: dateOnly, store: store, limit: 5000});
+  const methods = getMeta().methods;
+  const sum = { sales:{}, expenses:{}, total:{ sales:0, expenses:0 } };
+  methods.forEach(m=>{ sum.sales[m]=0; sum.expenses[m]=0; });
+
+  tx.forEach(t => {
+    if(t.type === 'INCOME'){
+      sum.sales[t.method] += Number(t.amount)||0;
+      sum.total.sales += Number(t.amount)||0;
+    }else if(t.type === 'EXPENSE'){
+      sum.expenses[t.method] += Number(t.amount)||0;
+      sum.total.expenses += Number(t.amount)||0;
     }
+  });
 
-    if (!found) {
-      sheet.getRange('H15').setValue("Няма данни");
-      sheet.getRange('J15').setValue(""); // Изчистване на J15
-      sheet.getRange('K15').setValue(""); // Изчистване на K15
-    }
-  }
+  const expectedCash = round2_( (sum.sales.CASH||0) - (sum.expenses.CASH||0) );
+  return {date: dateOnly, store: store||'Основен', ...sum, expectedCash};
+}
 
-  // Проверка за промяна в колоната B
-  if (editedCell.getColumn() === 2 && editedCell.getRow() > 0) { // Проверка дали е променена колоната B
-    var currentRow = editedCell.getRow(); // Запомняне на текущия ред
-    var dateToCheck = sheet.getRange(currentRow, 1).getValue(); // Вземаме датата от колона A на текущия ред
+function closeDay(payload){
+  // payload: {date, store, declaredCash, note}
+  ensureSheets_();
+  const dateOnly = toDateOnly_(payload.date);
+  const store = payload.store || 'Основен';
+  const declared = round2_(Number(payload.declaredCash)||0);
+  const note = String(payload.note||'');
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
 
-    // Проверка дали текущата дата в K1 съвпада с датата от колона A
-    if (dateToCheck instanceof Date && dateToCheck.getTime() === today.getTime()) {
-      var new_оборот = editedCell.getValue(); // Вземаме новия оборот
-      if (new_оборот !== last_оборот) { // Проверка за промяна
-        sheet.getRange('H15').setValue("Вашия оборот за " + today.toLocaleDateString() + " е: " + new_оборот);
-        sheet.getRange('J15').setValue(new_оборот); // Актуализиране на J15
-        sheet.getRange('K15').setValue(new_оборот); // Актуализиране на K15
-        last_оборот = new_оборот; // Обновяване на последната стойност
-      }
-    }
-  }
-  
-  // Проверка за разходите
-  if (editedCell.getA1Notation() === 'K1' || editedCell.getA1Notation() === 'H4') {
-    var expenseDate = sheet.getRange('K1').getValue(); // Вземаме днешната дата от K1
-    var searchDate = sheet.getRange('H4').getValue(); // Вземаме датата от H4
-    if (searchDate instanceof Date) {
-      var dateRange = sheet.getRange('B:B');
-      var values = dateRange.getValues();
-      var expenseFound = false;
+  const s = getDailySummary(dateOnly, store);
+  const expectedCash = round2_(s.expectedCash);
+  const diff = round2_(declared - expectedCash);
 
-      for (var i = 36; i < values.length; i++) { // Започваме от ред 37 (индекс 36)
-        if (values[i][0] instanceof Date && values[i][0].getTime() === searchDate.getTime()) {
-          var expenseValue = sheet.getRange(i + 1, 8).getValue(); // Взимаме стойността от колона H
-          sheet.getRange('H16').setValue("Вашия разход е: " + expenseValue);
-          sheet.getRange('J16').setValue(expenseValue); // Прехвърляне на стойността в J16
-          sheet.getRange('K16').setValue(expenseValue); // Прехвърляне на стойността в K16
-          expenseFound = true;
-          break;
-        }
-      }
+  const sh = getSheet_(SH_DAY);
+  sh.appendRow([
+    new Date(),
+    dateOnly,
+    store,
+    round2_(s.sales.CASH||0),
+    round2_(s.sales.CARD||0),
+    round2_(s.sales.BANK||0),
+    round2_(s.expenses.CASH||0),
+    round2_(s.expenses.CARD||0),
+    round2_(s.expenses.BANK||0),
+    declared,
+    expectedCash,
+    diff,
+    note,
+    user
+  ]);
 
-      if (!expenseFound) {
-        sheet.getRange('H16').setValue("Няма данни за разхода");
-        sheet.getRange('J16').setValue(""); // Изчистване на J16
-        sheet.getRange('K16').setValue(""); // Изчистване на K16
-      }
-    }
+  return {ok:true, expectedCash, declared, diff};
+}
+
+/** ===================== INTERNALS ===================== **/
+function ensureSheets_(){
+  const ss = SpreadsheetApp.openById(SS_ID);
+
+  // Transactions
+  ensureSheetWithHeader_(ss, SH_TX, [
+    'timestamp','date','store','type','method','supplier','docType','category','description','amount','user'
+  ]);
+
+  // CashCounts
+  const denoms = getExistingOrDefaultDenoms_();
+  ensureSheetWithHeader_(ss, SH_CNT, [
+    'timestamp','date','store', ...denoms.map(d=>`qty_${d}`), 'total','user'
+  ]);
+
+  // DayClosings
+  ensureSheetWithHeader_(ss, SH_DAY, [
+    'timestamp','date','store',
+    'sales_cash','sales_card','sales_bank',
+    'expenses_cash','expenses_card','expenses_bank',
+    'declared_cash','expected_cash','diff','note','user'
+  ]);
+
+  // Settings
+  ensureSheetWithHeader_(ss, SH_SET, ['key','value']);
+
+  // Users (по избор)
+  ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
+}
+
+function ensureSheetWithHeader_(ss, name, header){
+  let sh = ss.getSheetByName(name);
+  if(!sh) sh = ss.insertSheet(name);
+  if(sh.getLastRow() === 0){
+    sh.getRange(1,1,1,header.length).setValues([header]);
+    sh.setFrozenRows(1);
   }
 }
 
-// Функция за прехвърляне на данни от G11:O12 в A39:I40
-function transferData() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-
-  // Намираме следващия свободен ред в A39:I40
-  var nextRow = findNextRow();
-
-  // Прехвърляне на данните
-  sheet.getRange(nextRow, 1).setValue(nextRow - 38); // Задаване на номер в A39:A40
-  sheet.getRange(nextRow, 2).setValue(sheet.getRange('H11').getValue()); // B39:B40
-  sheet.getRange(nextRow, 3).setValue(sheet.getRange('I11').getValue()); // C39:C40
-  sheet.getRange(nextRow, 4).setValue(sheet.getRange('J11').getValue()); // D39:D40
-  sheet.getRange(nextRow, 5).setValue(sheet.getRange('K11').getValue()); // E39:G40
-  sheet.getRange(nextRow, 6).setValue(sheet.getRange('L11').getValue()); // E39:G40
-  sheet.getRange(nextRow, 7).setValue(sheet.getRange('M11').getValue()); // E39:G40
-  sheet.getRange(nextRow, 8).setValue(sheet.getRange('N11').getValue()); // H39:H40
-  sheet.getRange(nextRow, 9).setValue(sheet.getRange('O11').getValue()); // I39:I40
-
-  // Изчистване на клетките G11:O12
-  clearSourceCells();
+function getExistingOrDefaultDenoms_(){
+  const ss = SpreadsheetApp.openById(SS_ID);
+  let sh = ss.getSheetByName(SH_CNT);
+  if(!sh || sh.getLastRow() === 0) return DEFAULT_DENOMS.slice();
+  const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  const cols = header.filter(h => String(h).startsWith('qty_'));
+  if(cols.length === 0) return DEFAULT_DENOMS.slice();
+  return cols.map(c => Number(String(c).replace('qty_','')) );
 }
 
-// Функция за намиране на следващия свободен ред
-function findNextRow() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var range = sheet.getRange('A39:A400');
-  var values = range.getValues();
-
-  for (var i = 0; i < values.length; i++) {
-    if (!values[i][0]) {
-      return 39 + i; // Връща реда с индекс 39 или 40
-    }
-  }
-  
-  return 41; // Ако и двете редове са заети, връща следващия свободен ред
+function getSheet_(name){
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sh = ss.getSheetByName(name);
+  if(!sh) throw new Error('Липсва лист: '+name);
+  return sh;
 }
 
-// Функция за изчистване на клетките G11:O12
-function clearSourceCells() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.getRange('G11:O12').clearContent(); // Изчистване на клетките G11:O12
-  Logger.log("Клетките G11:O12 са изчистени.");
+function toDateOnly_(v){
+  // връща yyyy-mm-dd в TZ Europe/Sofia
+  const d = typeof v === 'string' ? new Date(v) : new Date(v);
+  const tz = Session.getScriptTimeZone() || TZ;
+  const y = Utilities.formatDate(d, tz, 'yyyy');
+  const m = Utilities.formatDate(d, tz, 'MM');
+  const day = Utilities.formatDate(d, tz, 'dd');
+  return `${y}-${m}-${day}`;
 }
 
-// Функция за изчистване на клетките H4:K4
-function clearCells() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.getRange('H4:K4').clearContent(); // Изчистване на клетките H4:K4
-  Logger.log("Клетките H4:K4 са изчистени.");
-}
-
-// Функция за изтриване на всички тригери
-function deleteAllTriggers() {
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
-  }
-  Logger.log("Всички тригери са изтрити.");
+function round2_(n){
+  return Math.round((Number(n)||0)*100)/100;
 }

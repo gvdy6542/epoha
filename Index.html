@@ -1,256 +1,337 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Уеб интерфейс към таблицата</title>
+  <meta charset="utf-8" />
+  <title>Отчитане на магазин</title>
   <style>
-    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa}
-    .wrap{max-width:1150px;margin:24px auto;padding:0 16px}
-    .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-    input,select,button{border-radius:8px;border:1px solid #d0d7de;padding:8px 10px}
-    button.primary{background:#0d6efd;color:#fff;border-color:#0d6efd;cursor:pointer}
-    table{width:100%;border-collapse:collapse;background:#fff}
-    th,td{padding:10px;border-bottom:1px solid #eee;font-size:14px}
-    th{background:#f0f6ff;cursor:pointer}
-    tr:hover td{background:#fafbfc}
-    .muted{color:#6a737d}
-    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-    .modalBack{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center}
-    .modal{width:720px;background:#fff;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
-    .modal h3{margin:0 0 10px 0}
-    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
-    .right{text-align:right}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;font-size:12px}
+    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}
+    .wrap{max-width:1200px;margin:20px auto;padding:0 16px}
+    .row{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
+    .card h3{margin:0 0 8px;font-size:16px}
+    label{display:block;font-size:12px;margin-bottom:6px;color:#475569}
+    input,select,textarea,button{width:100%;padding:8px;border:1px solid #d0d7de;border-radius:8px;font-size:14px}
+    button{cursor:pointer}
+    .btn{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;font-size:13px}
+    th{background:#f8fafc}
+    .stat{display:flex;gap:8px;align-items:baseline}
+    .stat .v{font-weight:700}
+    .right{justify-self:end}
+    .muted{color:#64748b}
+    .ok{color:#16a34a}
+    .bad{color:#dc2626}
+    .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="bar">
-      <input id="search" placeholder="Търсене...">
-      <select id="limit">
-        <option>25</option><option selected>50</option><option>100</option>
-      </select>
-      <button class="primary" onclick="reload()">Презареди</button>
-      <button onclick="openCreate()">+ Нов ред</button>
-      <span id="total" class="muted"></span>
-      <span class="pill">Сортира: <b id="sortInfo">няма</b></span>
-      <button onclick="callCustom()" title="Викай съществуваща функция от скрипта">Run Custom()</button>
-    </div>
-
-    <table>
-      <thead id="thead"></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-      <div>
-        <button onclick="prevPage()">Назад</button>
-        <button onclick="nextPage()">Напред</button>
+    <div class="row" style="margin-bottom:12px">
+      <div class="card" style="grid-column: span 12; display:grid; grid-template-columns:repeat(12,1fr); gap:12px; align-items:end;">
+        <div style="grid-column: span 3">
+          <label>Магазин</label>
+          <select id="store"></select>
+        </div>
+        <div style="grid-column: span 3">
+          <label>Дата</label>
+          <input type="date" id="date" />
+        </div>
+        <div class="right" style="grid-column: span 6; display:flex; gap:8px; justify-content:flex-end; align-items:end">
+          <button class="btn" onclick="refreshAll()">Обнови</button>
+          <button onclick="openWebApp()">Отвори в нов таб</button>
+        </div>
       </div>
-      <div class="muted" id="pageInfo"></div>
     </div>
 
-    <h3>Каса</h3>
-    <div class="bar">
-      <select id="cashType">
-        <option value="turnover">Оборот</option>
-        <option value="income">Приход</option>
-        <option value="expense">Разход</option>
-      </select>
-      <input id="cashDesc" placeholder="Описание">
-      <input id="cashAmount" type="number" placeholder="Сума">
-      <button onclick="saveCash()">Запази</button>
-      <button onclick="showCashReport()">Отчет</button>
-      <span id="cashSummary" class="pill"></span>
-    </div>
-  </div>
+    <div class="row">
+      <div class="card" style="grid-column: span 5">
+        <h3>Операция (приход/разход)</h3>
+        <div class="grid3">
+          <div>
+            <label>Тип</label>
+            <select id="tx_type">
+              <option value="INCOME">Приход</option>
+              <option value="EXPENSE">Разход</option>
+            </select>
+          </div>
+          <div>
+            <label>Метод</label>
+            <select id="tx_method"></select>
+          </div>
+          <div>
+            <label>Категория</label>
+            <select id="tx_category"></select>
+          </div>
+        </div>
+        <div id="exp_extra" class="grid2" style="margin-top:8px; display:none">
+          <div>
+            <label>Доставчик</label>
+            <div style="display:flex; gap:4px">
+              <select id="tx_supplier" style="flex:1"></select>
+              <button type="button" onclick="addSupplierPrompt()" style="width:auto">+</button>
+            </div>
+          </div>
+          <div>
+            <label>Документ</label>
+            <select id="tx_doc"></select>
+          </div>
+        </div>
+        <div class="grid2" style="margin-top:8px">
+          <div>
+            <label>Сума</label>
+            <input type="number" id="tx_amount" step="0.01" />
+          </div>
+          <div>
+            <label>Описание</label>
+            <input type="text" id="tx_desc" />
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn" id="btn_add" onclick="addTx()">Добави</button>
+        </div>
+      </div>
 
-  <!-- Модал -->
-  <div class="modalBack" id="mb">
-    <div class="modal">
-      <h3 id="modalTitle">Ред</h3>
-      <div id="form" class="grid"></div>
-      <div class="actions">
-        <button class="primary" onclick="save()">Запази</button>
-        <button onclick="closeModal()">Затвори</button>
+      <div class="card" style="grid-column: span 7">
+        <h3>Обобщение за деня</h3>
+        <div id="summary" class="grid3"></div>
+        <div class="muted" style="margin-top:8px" id="summary_note"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="card" style="grid-column: span 5">
+        <h3>Броене на каса</h3>
+        <div id="denoms" class="grid3"></div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+          <div class="stat">Декларирани пари в каса: <span class="v" id="declared">0.00</span> лв</div>
+          <button class="btn" onclick="saveCount()">Запиши броене</button>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 7">
+        <h3>Приключване на ден</h3>
+        <label>Бележка</label>
+        <textarea id="close_note" rows="3" placeholder="Коментар"></textarea>
+        <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
+          <div class="muted">Използва декларираната сума от броенето.</div>
+          <button class="btn" onclick="closeDay()">Приключи деня</button>
+        </div>
+        <div id="close_result" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="card" style="grid-column: span 12">
+        <h3>Последни операции</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Час</th><th>Тип</th><th>Метод</th><th>Доставчик</th><th>Документ</th><th>Категория</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+            </tr>
+          </thead>
+          <tbody id="tx_rows"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
   <script>
-    let headers = [];
-    let formulaCols = [];
-    let validations = [];
-    let state = { offset:0, limit:50, search:'', sortBy:'', sortDir:'asc', rows:[], total:0 };
-    let editRow = null;
+    let META = null;
 
-    const $ = sel => document.querySelector(sel);
-
-    function init(){
-      google.script.run.withSuccessHandler(meta=>{
-        headers = meta.headers||[];
-        formulaCols = meta.formulaCols||[];
-        validations = meta.validations||[];
-
-        // рендер заглавки
-        const tr = document.createElement('tr');
-        headers.forEach(h=>{
-          const th = document.createElement('th');
-          th.textContent = h + (formulaCols[headers.indexOf(h)] ? ' ∑' : '');
-          th.onclick = ()=>toggleSort(h);
-          tr.appendChild(th);
-        });
-        const thA = document.createElement('th'); thA.textContent='Действия'; tr.appendChild(thA);
-        $('#thead').innerHTML=''; $('#thead').appendChild(tr);
-        reload();
-      }).getMeta();
-
-      $('#search').addEventListener('input', debounce(()=>{
-        state.search = $('#search').value.trim();
-        state.offset = 0;
-        reload();
-      }, 350));
-
-      $('#limit').addEventListener('change', ()=>{
-        state.limit = parseInt($('#limit').value,10);
-        state.offset = 0;
-        reload();
-      });
+    function openWebApp(){
+      window.open(location.href, '_blank');
     }
 
-    function reload(){
-      google.script.run.withSuccessHandler(render).fetchRows({
-        offset: state.offset, limit: state.limit,
-        search: state.search, sortBy: state.sortBy, sortDir: state.sortDir
-      });
+    function today(){
+      const d = new Date();
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${d.getFullYear()}-${mm}-${dd}`;
     }
 
-    function render(res){
-      state.rows = res.rows||[]; state.total = res.total||0;
-      $('#total').textContent = `Общо: ${state.total}`;
-      $('#sortInfo').textContent = state.sortBy ? `${state.sortBy} (${state.sortDir})` : 'няма';
+    function money(n){ return (Number(n)||0).toFixed(2); }
 
-      const tb = $('#tbody'); tb.innerHTML='';
-      state.rows.forEach(row=>{
-        const tr = document.createElement('tr');
-        headers.forEach((h,i)=>{
-          const td = document.createElement('td');
-          td.textContent = row[h] ?? '';
-          if (!isNaN(parseFloat(row[h]))) td.classList.add('right');
-          tr.appendChild(td);
-        });
-        const act = document.createElement('td');
-        act.innerHTML = `
-          <button onclick='onEdit(${encodeRow(row)})'>Редакция</button>
-          <button onclick='onDelete("${String(row["ID"]||"")}")'>Изтрий</button>
+    function byId(id){ return document.getElementById(id); }
+
+    function setDeclared(){
+      let total = 0;
+      const boxes = document.querySelectorAll('[data-denom]');
+      boxes.forEach(b=>{
+        const d = Number(b.dataset.denom);
+        const q = Number(b.value||0);
+        total += d*q;
+      });
+      byId('declared').textContent = money(total);
+      return total;
+    }
+
+    function fillDenoms(){
+      const wrap = byId('denoms');
+      wrap.innerHTML = '';
+      META.denoms.forEach(d => {
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <label>${d.toFixed(2)} лв – брой</label>
+          <input type="number" min="0" step="1" data-denom="${d}" value="0" oninput="setDeclared()" />
         `;
-        tr.appendChild(act);
-        tb.appendChild(tr);
+        wrap.appendChild(div);
       });
-
-      const from = state.total ? state.offset+1 : 0;
-      const to = Math.min(state.offset+state.limit, state.total);
-      $('#pageInfo').textContent = state.total ? `${from}–${to} от ${state.total}` : '0/0';
+      setDeclared();
     }
 
-    function encodeRow(row){ return JSON.stringify(row).replace(/"/g,'&quot;'); }
-    function decodeRow(s){ return JSON.parse(s.replace(/&quot;/g,'"')); }
-
-    function toggleSort(col){
-      if (state.sortBy===col) state.sortDir = state.sortDir==='asc' ? 'desc' : 'asc';
-      else { state.sortBy = col; state.sortDir = 'asc'; }
-      state.offset = 0; reload();
-    }
-    function prevPage(){ if (state.offset===0) return; state.offset = Math.max(0, state.offset-state.limit); reload(); }
-    function nextPage(){ if (state.offset+state.limit>=state.total) return; state.offset += state.limit; reload(); }
-
-    function openCreate(){
-      editRow = {};
-      headers.forEach(h=> editRow[h] = '');
-      showForm('Нов ред', editRow);
-    }
-    function onEdit(s){
-      editRow = decodeRow(s);
-      showForm(`Редакция #${editRow['ID']||''}`, editRow);
+    function fillMeta(meta){
+      META = meta;
+      // магазини
+      const s = byId('store');
+      s.innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      // методи
+      const m = byId('tx_method');
+      m.innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
+      fillSuppliers();
+      fillDocTypes();
+      // категории (динамично спрямо тип)
+      refillCategories();
+      // дата
+      byId('date').value = today();
+      fillDenoms();
+      onTypeChange();
+      refreshAll();
     }
 
-    function showForm(title, obj){
-      $('#modalTitle').textContent = title;
-      const form = $('#form'); form.innerHTML = '';
-      headers.forEach((h,i)=>{
-        const isFormula = formulaCols[i];
-        const v = obj[h] ?? '';
-        const wrap = document.createElement('div');
-        if (validations[i] && validations[i].type==='list' && validations[i].values.length){
-          const opts = validations[i].values.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('');
-          wrap.innerHTML = `<label>${h}</label><select data-col="${h}" ${isFormula?'disabled':''}>${opts}</select>`;
-        } else {
-          wrap.innerHTML = `<label>${h}</label><input data-col="${h}" value="${v}" ${isFormula?'disabled':''}>`;
-        }
-        form.appendChild(wrap);
-      });
-      $('#mb').style.display='flex';
-    }
-    function closeModal(){ $('#mb').style.display='none'; }
-
-    function save(){
-      const inputs = [...document.querySelectorAll('#form [data-col]')];
-      const row = {};
-      inputs.forEach(el=> row[el.dataset.col] = el.value);
-      google.script.run.withSuccessHandler(()=>{ closeModal(); reload(); })
-        .withFailureHandler(e=>alert(e && e.message ? e.message : e))
-        .upsertRows([row]);
+    function refillCategories(){
+      const type = byId('tx_type').value;
+      const c = byId('tx_category');
+      const arr = (META.categories[type]||[]);
+      c.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
     }
 
-    function onDelete(id){
-      if (!id) return alert('Липсва ID.');
-      if (!confirm('Изтриване на реда?')) return;
-      google.script.run.withSuccessHandler(()=>reload())
-        .withFailureHandler(e=>alert(e && e.message ? e.message : e))
-        .deleteRowsByIds([id]);
+    function fillSuppliers(){
+      const sp = byId('tx_supplier');
+      sp.innerHTML = META.suppliers.map(v=>`<option value="${v}">${v}</option>`).join('');
     }
 
-    function saveCash(){
-      const type = $('#cashType').value;
-      const amount = parseFloat($('#cashAmount').value);
-      const desc = $('#cashDesc').value;
-      if (isNaN(amount)) return alert('Въведете сума');
-      const done = ()=>{
-        $('#cashDesc').value='';
-        $('#cashAmount').value='';
-        showCashReport();
+    function fillDocTypes(){
+      const dt = byId('tx_doc');
+      dt.innerHTML = META.docTypes.map(v=>`<option value="${v}">${v}</option>`).join('');
+    }
+
+    function onTypeChange(){
+      refillCategories();
+      const isExp = byId('tx_type').value === 'EXPENSE';
+      byId('exp_extra').style.display = isExp ? 'grid' : 'none';
+    }
+
+    function addSupplierPrompt(){
+      const name = prompt('Нов доставчик:');
+      if(!name) return;
+      google.script.run.withSuccessHandler(res=>{
+        META.suppliers = res.suppliers;
+        fillSuppliers();
+        byId('tx_supplier').value = name;
+      }).withFailureHandler(err=> alert(err.message||err)).addSupplier(name);
+    }
+
+    function addTx(){
+      const btn = byId('btn_add');
+      btn.disabled = true;
+      const payload = {
+        date: byId('date').value,
+        store: byId('store').value,
+        type: byId('tx_type').value,
+        method: byId('tx_method').value,
+        supplier: byId('tx_supplier').value,
+        docType: byId('tx_doc').value,
+        category: byId('tx_category').value,
+        description: byId('tx_desc').value,
+        amount: Number(byId('tx_amount').value||0)
       };
-      if (type === 'turnover') {
-        google.script.run.withSuccessHandler(done).addTurnover(amount);
-      } else if (type === 'income') {
-        google.script.run.withSuccessHandler(done).addIncome(desc, amount);
-      } else {
-        google.script.run.withSuccessHandler(done).addExpense(desc, amount);
-      }
+      google.script.run.withSuccessHandler(()=>{
+        byId('tx_amount').value='';
+        byId('tx_desc').value='';
+        refreshAll();
+        btn.disabled = false;
+      }).withFailureHandler(err=>{
+        alert(err.message||err);
+        btn.disabled = false;
+      }).addTransaction(payload);
     }
 
-    function showCashReport(){
-      google.script.run.withSuccessHandler(r=>{
-        $('#cashSummary').textContent = `Приходи: ${r.income}, Разходи: ${r.expense}, Баланс: ${r.balance}`;
-      }).getCashReport();
+    function saveCount(){
+      const counts = {};
+      document.querySelectorAll('[data-denom]').forEach(b=>{
+        counts[b.dataset.denom] = Number(b.value||0);
+      });
+      const payload = { date: byId('date').value, store: byId('store').value, counts };
+      google.script.run.withSuccessHandler(res=>{
+        byId('declared').textContent = money(res.total);
+        alert('Броенето е записано.');
+      }).withFailureHandler(err=> alert(err.message||err)).saveCashCount(payload);
     }
 
-    // Викай готова функция от текущия Apps Script (ако имаш такава)
-    function callCustom(){
-      const fn = prompt('Име на функция за изпълнение (глобална):');
-      if (!fn) return;
-      const args = prompt('JSON масив с аргументи (по избор):', '[]');
-      let parsed = [];
-      try { parsed = JSON.parse(args||'[]'); } catch(_){}
-      google.script.run.withSuccessHandler(res=>alert('OK: '+JSON.stringify(res)))
-        .withFailureHandler(e=>alert('Грешка: ' + (e && e.message ? e.message : e)))
-        .runCustom(fn, parsed);
+    function closeDay(){
+      const declared = Number(byId('declared').textContent.replace(',','.'))||0;
+      const payload = {
+        date: byId('date').value,
+        store: byId('store').value,
+        declaredCash: declared,
+        note: byId('close_note').value
+      };
+      google.script.run.withSuccessHandler(res=>{
+        const diffCls = res.diff === 0 ? 'ok' : (res.diff > 0 ? 'ok' : 'bad');
+        byId('close_result').innerHTML = `
+          <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
+          <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
+          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>
+        `;
+        refreshAll();
+      }).withFailureHandler(err=> alert(err.message||err)).closeDay(payload);
     }
 
-    function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+    function refreshAll(){
+      const d = byId('date').value;
+      const s = byId('store').value;
+      // summary
+      google.script.run.withSuccessHandler(drawSummary).withFailureHandler(e=>console.log(e)).getDailySummary(d, s);
+      // tx list
+      const q = {dateFrom:d, dateTo:d, store:s, limit:200};
+      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>console.log(e)).listTransactions(q);
+    }
 
-    init();
-    showCashReport();
+    function drawSummary(s){
+      const el = byId('summary');
+      const parts = [
+        {label:'Продажби – Каса', v: s.sales.CASH||0},
+        {label:'Продажби – Карта', v: s.sales.CARD||0},
+        {label:'Продажби – Банка', v: s.sales.BANK||0},
+        {label:'Разходи – Каса', v: s.expenses.CASH||0},
+        {label:'Разходи – Карта', v: s.expenses.CARD||0},
+        {label:'Разходи – Банка', v: s.expenses.BANK||0},
+      ];
+      el.innerHTML = parts.map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span> <span class="v">${money(p.v)} лв</span></div></div>`).join('');
+      byId('summary_note').textContent = `Очаквани пари в каса: ${money(s.expectedCash)} лв`;
+    }
+
+    function drawTx(rows){
+      const tb = byId('tx_rows');
+      tb.innerHTML = rows.map(r=>`<tr>
+        <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
+        <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
+        <td>${r.method}</td>
+        <td>${r.supplier||''}</td>
+        <td>${r.docType||''}</td>
+        <td>${r.category||''}</td>
+        <td>${r.description||''}</td>
+        <td>${money(r.amount)}</td>
+        <td class="muted">${r.user||''}</td>
+      </tr>`).join('');
+    }
+
+    // INIT
+    google.script.run.withSuccessHandler(fillMeta).getMeta();
+    byId('tx_type').addEventListener('change', onTypeChange);
   </script>
 </body>
 </html>
