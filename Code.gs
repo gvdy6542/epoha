@@ -66,8 +66,13 @@ function getMeta(){
 function addTransaction(payload){
   ensureSheets_();
   // payload: {date, store, type, method, category, description, amount}
-  const required = ['date','store','type','method','amount'];
-  required.forEach(k => { if(payload[k] === undefined || payload[k] === null || payload[k] === '') throw new Error('Липсва поле: '+k); });
+  // 'store' is optional and defaults to 'Основен'
+  const required = ['date','type','method','amount'];
+  required.forEach(k => {
+    if(payload[k] === undefined || payload[k] === null || payload[k] === ''){
+      throw new Error('Липсва поле: '+k);
+    }
+  });
 
   const type = String(payload.type||'').toUpperCase();
   if(!DEFAULT_TYPES.includes(type)) throw new Error('Невалиден тип (INCOME/EXPENSE)');
