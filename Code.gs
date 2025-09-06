@@ -623,7 +623,10 @@ function doPost(e){
       const from = m[1], to = m[2];
       const r = getReportV2({dateFrom: from, dateTo: to});
       const k = r?.kpi || { income_total:0, expense_total:0, net:0 };
-      telegramSend_(chatId, `Период ${from} → ${to}\nПриход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
+      telegramSend_(chatId, `Период ${from} → ${to}
+Приход: ${k.income_total} лв
+Разход: ${k.expense_total} лв
+Нето: ${k.net} лв`);
     }
     else {
       telegramSend_(chatId, 'Непозната команда. Ползвай /start, /prihod, /razhod, /spravka YYYY-MM-DD YYYY-MM-DD');
