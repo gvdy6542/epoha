@@ -1,17 +1,17 @@
 /** ===================== CONFIG ===================== **/
 const TZ      = 'Europe/Sofia';
 const SS_ID   = SpreadsheetApp.getActive().getId();
+
 const SH_TX   = 'Transactions';     // Операции (приход/разход)
 const SH_CNT  = 'CashCounts';       // Броене на каса по деноминации
 const SH_DAY  = 'DayClosings';      // Дневни отчети / приключване
 const SH_SET  = 'Settings';         // Настройки (по избор)
 const SH_USERS= 'Users';            // Потребители (по избор)
+const SH_SUP  = 'Suppliers';        // Доставчици
 
 const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
 const DEFAULT_METHODS = ['CASH','CARD','BANK'];
 const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
-const SH_SUP  = 'Suppliers';        // Доставчици
-const REPORT_PIN = '6176';          // PIN за справки
 const DOC_TYPES = [
   'INVOICE','CREDIT_NOTE','DEBIT_NOTE','DELIVERY_NOTE','FISCAL_RECEIPT',
   'CASH_VOUCHER_OUT','BANK_PAYMENT','BANK_FEE','VAT_PROTOCOL','RECEIPT','CONTRACT','OTHER'
@@ -43,12 +43,12 @@ function doGet(){
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/** ===================== PUBLIC API (called from UI) ===================== **/
+/** ===================== PUBLIC API ===================== **/
 function getMeta(){
   ensureSheets_();
-  const set = getSheet_(SH_SET);
-  const meta = {
-    denoms: DEFAULT_DENOMS.slice(),
+  // Може да добавиш override от Settings при нужда – за сега държим дефолтите
+  return {
+    denoms: getExistingOrDefaultDenoms_(),
     methods: DEFAULT_METHODS.slice(),
     types: DEFAULT_TYPES.slice(),
     stores: ['Основен'],
@@ -57,59 +57,6 @@ function getMeta(){
       EXPENSE: ['Стока', 'Наем', 'Комунални', 'Касови разходи', 'Друго']
     }
   };
-
-  // Позволи override от Settings (key/value)
-  const rows = set.getLastRow() > 1 ? set.getRange(2,1,set.getLastRow()-1,2).getValues() : [];
-  const map = {};
-  rows.forEach(r=> map[String(r[0]||'').trim()] = String(r[1]||'').trim());
-
-  if(map.DENOMS){
-    try{
-      const arr = JSON.parse(map.DENOMS);
-      if(Array.isArray(arr)) meta.denoms = arr;
-    }catch(e){}
-  }
-  if(map.METHODS){
-    try{
-      const arr = JSON.parse(map.METHODS);
-      if(Array.isArray(arr)) meta.methods = arr;
-    }catch(e){}
-  }
-  if(map.STORES){
-    try{
-      const arr = JSON.parse(map.STORES);
-      if(Array.isArray(arr)) meta.stores = arr;
-    }catch(e){}
-  }
-  if(map.CAT_INCOME){
-    try{
-      const arr = JSON.parse(map.CAT_INCOME);
-      if(Array.isArray(arr)) meta.categories.INCOME = arr;
-    }catch(e){}
-  }
-  if(map.CAT_EXPENSE){
-    try{
-      const arr = JSON.parse(map.CAT_EXPENSE);
-      if(Array.isArray(arr)) meta.categories.EXPENSE = arr;
-    }catch(e){}
-  }
-
-  return meta;
-}
-
-function verifyReportPin(pin){
-  const p = String(pin||'');
-  if(p === REPORT_PIN){
-    const until = Date.now() + 12*60*60*1000;
-    PropertiesService.getUserProperties().setProperty('REPORT_OK_UNTIL', String(until));
-    return {ok:true, until};
-  }
-  throw new Error('Невалиден PIN');
-}
-
-function isReportAllowed_(){
-  const until = Number(PropertiesService.getUserProperties().getProperty('REPORT_OK_UNTIL')||0);
-  return until > Date.now();
 }
 
 function listSuppliers(){
@@ -136,10 +83,8 @@ function addSupplier(name){
 }
 
 /**
- * payload:
- *   date, store, type, method, category, description, amount
- *   [if EXPENSE] supplier, doc_type, doc_number, doc_date
- *   [optional file] file: {name, mimeType, bytes(base64)}
+ * payload: {date, store, type, method, category, description, amount,
+ *           supplier?, doc_type?, doc_number?, doc_date?}
  */
 function addTransaction(payload){
   ensureSheets_();
@@ -156,7 +101,7 @@ function addTransaction(payload){
   const method = String(payload.method||'').toUpperCase();
   if(!getMeta().methods.includes(method)) throw new Error('Невалиден метод на плащане');
 
-  let amount = Number(payload.amount);
+  let amount = Number(String(payload.amount).replace(',','.'));
   if(isNaN(amount)) throw new Error('Сумата не е число');
 
   const dateOnly = toDateOnly_(payload.date);
@@ -182,14 +127,6 @@ function addTransaction(payload){
     if(docType === 'CREDIT_NOTE') amount = -Math.abs(amount);
   }
 
-  // файл (по избор)
-  let fileId = '', fileUrl = '';
-  if(payload.file && payload.file.bytes){
-    const saved = saveTxDocumentFile_(payload.file, payload.store || 'Основен', dateOnly);
-    fileId = saved.id || '';
-    fileUrl = saved.url || '';
-  }
-
   const cols = TX_COLS;
   const row = new Array(Object.keys(cols).length).fill('');
   row[cols.timestamp]    = new Date();
@@ -198,15 +135,13 @@ function addTransaction(payload){
   row[cols.type]         = type;
   row[cols.method]       = method;
   row[cols.category]     = payload.category || '';
-  row[cols.supplier]     = supplier;
-  row[cols.doc_type]     = docType;
-  row[cols.doc_number]   = docNumber;
-  row[cols.doc_date]     = docDate;
+  if(cols.supplier     !== undefined) row[cols.supplier]     = supplier;
+  if(cols.doc_type     !== undefined) row[cols.doc_type]     = docType;
+  if(cols.doc_number   !== undefined) row[cols.doc_number]   = docNumber;
+  if(cols.doc_date     !== undefined) row[cols.doc_date]     = docDate;
   row[cols.description]  = payload.description || '';
   row[cols.amount]       = round2_(amount);
   row[cols.user]         = user;
-  if(cols.doc_file_id !== undefined)  row[cols.doc_file_id]  = fileId;
-  if(cols.doc_file_url !== undefined) row[cols.doc_file_url] = fileUrl;
 
   const sh = getSheet_(SH_TX);
   sh.appendRow(row);
@@ -220,9 +155,13 @@ function listTransactions(query){
   if(last < 2) return [];
   const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
   const cols = TX_COLS;
+
+  const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
+
   const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
   const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
   const store = query?.store || null;
+
   let rows = data.filter(r => {
     const date = r[cols.date];
     const st = r[cols.store];
@@ -242,16 +181,14 @@ function listTransactions(query){
     store: r[cols.store],
     type: r[cols.type],
     method: r[cols.method],
-    category: r[cols.category],
-    supplier: r[cols.supplier],
-    doc_type: r[cols.doc_type],
-    doc_number: r[cols.doc_number],
-    doc_date: r[cols.doc_date],
-    description: r[cols.description],
-    amount: r[cols.amount],
-    user: r[cols.user],
-    doc_file_id:  cols.doc_file_id  !== undefined ? (r[cols.doc_file_id]  || '') : '',
-    doc_file_url: cols.doc_file_url !== undefined ? (r[cols.doc_file_url] || '') : ''
+    category: cols.category!==undefined ? r[cols.category] : '',
+    supplier: cols.supplier!==undefined ? r[cols.supplier] : '',
+    doc_type: cols.doc_type!==undefined ? r[cols.doc_type] : '',
+    doc_number: cols.doc_number!==undefined ? r[cols.doc_number] : '',
+    doc_date: cols.doc_date!==undefined ? r[cols.doc_date] : '',
+    description: cols.description!==undefined ? r[cols.description] : '',
+    amount: toNum_(r[cols.amount]),
+    user: cols.user!==undefined ? r[cols.user] : ''
   }));
 }
 
@@ -339,34 +276,36 @@ function closeDay(payload){
   return {ok:true, expectedCash, declared, diff};
 }
 
-function getReportData(query){
+/** ===================== REPORT V2 (без PIN) ===================== **/
+function getReportV2(query){
   ensureSheets_();
-  if(!isReportAllowed_()) throw new Error('Unauthorized');
 
-  const df = toDateOnly_(query.dateFrom);
-  const dt = toDateOnly_(query.dateTo);
-  const store = query?.store || null;
+  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
+  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const store = (query?.store || '').trim() || '';
 
-  const methods = getMeta().methods;
-  const byMethod = {income:{}, expense:{}};
-  methods.forEach(m=>{ byMethod.income[m]=0; byMethod.expense[m]=0; });
-  const byCatIncome = {}, byCatExpense = {};
-  const expDoc = {}, supMap = {};
-  let income_total=0, expense_total=0, income_count=0, expense_count=0;
-  const recentTx = [];
+  const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
+  const round2 = n => Math.round(n*100)/100;
 
-  // Transactions sheet – build column map each time for reliability
+  const res = {
+    range:{from: df||'', to: dt||'', store: store||'Всички'},
+    kpi:{income_total:0,expense_total:0,net:0,tx_count:0,income_count:0,expense_count:0},
+    byMethod:[], byCatIncome:[], byCatExpense:[],
+    expenseByDocType:[], suppliersTop:[], closings:[], recentTx:[]
+  };
+
+  // Transactions
   const sh = getSheet_(SH_TX);
   const last = sh.getLastRow();
-  if(last >= 2){
-    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(h=>String(h));
-    const cols = {};
-    header.forEach((h,i)=> cols[h]=i);
-
+  if(last>=2){
+    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+    const c={}; header.forEach((h,i)=>c[h]=i);
     const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+
+    const byMethod={}, byCatIn={}, byCatEx={}, byDoc={}, bySup={};
+
     const rows = data.filter(r=>{
-      const d = r[cols.date];
-      const st = cols.store!==undefined ? r[cols.store] : '';
+      const d=r[c.date]; const st=r[c.store];
       if(df && d < df) return false;
       if(dt && d > dt) return false;
       if(store && st !== store) return false;
@@ -374,66 +313,54 @@ function getReportData(query){
     });
 
     rows.forEach(r=>{
-      const t = r[cols.type];
-      const amt = Number(r[cols.amount])||0;
-      const m = r[cols.method];
-      const cat = cols.category!==undefined ? (r[cols.category]||'') : '';
-      if(t === 'INCOME'){
-        income_total += amt; income_count++;
-        if(m) byMethod.income[m] = (byMethod.income[m]||0)+amt;
-        if(cat) byCatIncome[cat] = (byCatIncome[cat]||0)+amt;
-      }else if(t === 'EXPENSE'){
-        expense_total += amt; expense_count++;
-        if(m) byMethod.expense[m] = (byMethod.expense[m]||0)+amt;
-        if(cat) byCatExpense[cat] = (byCatExpense[cat]||0)+amt;
-        const dtp = cols.doc_type!==undefined ? (r[cols.doc_type]||'') : '';
-        if(dtp){
-          const o = expDoc[dtp]||{amount:0,count:0};
-          o.amount += amt; o.count++; expDoc[dtp]=o;
-        }
-        const sup = cols.supplier!==undefined ? (r[cols.supplier]||'') : '';
-        if(sup){
-          const o = supMap[sup]||{amount:0,count:0};
-          o.amount += amt; o.count++; supMap[sup]=o;
-        }
+      const t=r[c.type], m=r[c.method], cat=r[c.category], sup=r[c.supplier], dtp=r[c.doc_type], amt=toNum_(r[c.amount]);
+      if(!byMethod[m]) byMethod[m]={income:0,expense:0};
+      if(t==='INCOME'){
+        res.kpi.income_total += amt; res.kpi.income_count++;
+        byMethod[m].income += amt;
+        if(cat) byCatIn[cat] = (byCatIn[cat]||0) + amt;
+      }else if(t==='EXPENSE'){
+        res.kpi.expense_total += amt; res.kpi.expense_count++;
+        byMethod[m].expense += amt;
+        if(cat) byCatEx[cat] = (byCatEx[cat]||0) + amt;
+        if(dtp){ const o=byDoc[dtp]||{amount:0,count:0}; o.amount+=amt; o.count++; byDoc[dtp]=o; }
+        if(sup){ const o=bySup[sup]||{amount:0,count:0}; o.amount+=amt; o.count++; bySup[sup]=o; }
       }
     });
 
-    rows.sort((a,b)=> new Date(b[cols.timestamp]).getTime()-new Date(a[cols.timestamp]).getTime());
+    rows.sort((a,b)=> new Date(b[c.timestamp]) - new Date(a[c.timestamp]));
     rows.slice(0,100).forEach(r=>{
-      recentTx.push({
-        timestamp:r[cols.timestamp],
-        date:r[cols.date],
-        store: cols.store!==undefined ? r[cols.store] : '',
-        type:r[cols.type],
-        method:r[cols.method],
-        category: cols.category!==undefined ? r[cols.category] : '',
-        supplier: cols.supplier!==undefined ? r[cols.supplier] : '',
-        doc_type: cols.doc_type!==undefined ? r[cols.doc_type] : '',
-        doc_number: cols.doc_number!==undefined ? r[cols.doc_number] : '',
-        doc_date: cols.doc_date!==undefined ? r[cols.doc_date] : '',
-        description: cols.description!==undefined ? r[cols.description] : '',
-        amount:r[cols.amount],
-        user: cols.user!==undefined ? r[cols.user] : '',
-        doc_file_url: cols.doc_file_url!==undefined ? (r[cols.doc_file_url]||'') : ''
+      res.recentTx.push({
+        timestamp:r[c.timestamp],
+        date:r[c.date],
+        store:r[c.store],
+        type:r[c.type],
+        method:r[c.method],
+        category:r[c.category]||'',
+        supplier:r[c.supplier]||'',
+        doc_type:r[c.doc_type]||'',
+        doc_number:c.doc_number!==undefined? (r[c.doc_number]||'') : '',
+        doc_date:c.doc_date!==undefined? (r[c.doc_date]||'') : '',
+        description:r[c.description]||'',
+        amount: toNum_(r[c.amount]),
+        user:r[c.user]||''
       });
     });
-  }
 
-  const byCategory = {
-    income: Object.keys(byCatIncome).map(k=>({category:k, amount: round2_(byCatIncome[k])})),
-    expense: Object.keys(byCatExpense).map(k=>({category:k, amount: round2_(byCatExpense[k])}))
-  };
-  const expenseByDocType = Object.keys(expDoc).map(k=>({doc_type:k, amount: round2_(expDoc[k].amount), count: expDoc[k].count}));
-  const suppliersTop = Object.keys(supMap).map(k=>({supplier:k, amount: round2_(supMap[k].amount), count: supMap[k].count})).sort((a,b)=>b.amount-a.amount).slice(0,20);
-  methods.forEach(m=>{
-    byMethod.income[m]=round2_(byMethod.income[m]||0);
-    byMethod.expense[m]=round2_(byMethod.expense[m]||0);
-  });
+    Object.keys(byMethod).forEach(k=>res.byMethod.push({method:k||'-',income:round2(byMethod[k].income),expense:round2(byMethod[k].expense)}));
+    Object.keys(byCatIn).forEach(k=>res.byCatIncome.push({category:k,amount:round2(byCatIn[k])}));
+    Object.keys(byCatEx).forEach(k=>res.byCatExpense.push({category:k,amount:round2(byCatEx[k])}));
+    Object.keys(byDoc).forEach(k=>res.expenseByDocType.push({doc_type:k,amount:round2(byDoc[k].amount),count:byDoc[k].count}));
+    Object.keys(bySup).forEach(k=>res.suppliersTop.push({supplier:k,amount:round2(bySup[k].amount),count:bySup[k].count}));
+
+    res.kpi.income_total = round2(res.kpi.income_total);
+    res.kpi.expense_total= round2(res.kpi.expense_total);
+    res.kpi.net          = round2(res.kpi.income_total - res.kpi.expense_total);
+    res.kpi.tx_count     = res.kpi.income_count + res.kpi.expense_count;
+  }
 
   // DayClosings
   const shd = getSheet_(SH_DAY);
-  const closings = [];
   const lastd = shd.getLastRow();
   if(lastd >= 2){
     const h = shd.getRange(1,1,1,shd.getLastColumn()).getValues()[0];
@@ -445,7 +372,7 @@ function getReportData(query){
       if(df && d<df) return;
       if(dt && d>dt) return;
       if(store && st!==store) return;
-      closings.push({
+      res.closings.push({
         date:d, store:st,
         sales_cash:r[idx.sales_cash]||0,
         sales_card:r[idx.sales_card]||0,
@@ -460,107 +387,68 @@ function getReportData(query){
     });
   }
 
-  income_total = round2_(income_total);
-  expense_total = round2_(expense_total);
-  const net = round2_(income_total - expense_total);
-  const kpi = {income_total, expense_total, net, tx_count: income_count+expense_count, income_count, expense_count};
-
-  return {
-    range:{from: df || '', to: dt || '', store: store || 'Всички'},
-    kpi,
-    byMethod,
-    byCategory,
-    expenseByDocType,
-    suppliersTop,
-    closings,
-    recentTx
-  };
+  return res;
 }
 
-function exportReportCsv(query){
-  ensureSheets_();
-  if(!isReportAllowed_()) throw new Error('Unauthorized');
-  const data = getReportData(query);
-  if(!data || !data.kpi) throw new Error('Няма данни за справка');
-
-  const from = data.range.from || '';
-  const to   = data.range.to   || '';
-  const store= data.range.store|| 'Всички';
-
+function exportReportCsvV2(query){
+  const data = getReportV2(query);
+  const q = v => `"${String(v??'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
   const lines = [];
-  const csvCell_ = v => `"${String(v||'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
+  const from = data.range.from||'', to = data.range.to||'', store = data.range.store||'Всички';
+
   lines.push(`Период от,${from},до,${to},Магазин,${store}`);
   lines.push('');
   lines.push('KPI');
-  lines.push(`Общ приход,${data.kpi.income_total.toFixed(2)}`);
-  lines.push(`Общ разход,${data.kpi.expense_total.toFixed(2)}`);
-  lines.push(`Нето,${data.kpi.net.toFixed(2)}`);
+  lines.push(`Общ приход,${data.kpi.income_total}`);
+  lines.push(`Общ разход,${data.kpi.expense_total}`);
+  lines.push(`Нето,${data.kpi.net}`);
   lines.push(`Брой операции,${data.kpi.tx_count}`);
   lines.push('');
   lines.push('По метод');
   lines.push('Метод,Приход,Разход');
-  Object.keys(data.byMethod.income).forEach(m=>{
-    lines.push(`${m},${data.byMethod.income[m].toFixed(2)},${data.byMethod.expense[m].toFixed(2)}`);
-  });
+  data.byMethod.forEach(m=> lines.push(`${q(m.method)},${m.income},${m.expense}`));
   lines.push('');
   lines.push('Приходи по категории');
   lines.push('Категория,Сума');
-  data.byCategory.income.forEach(c=> lines.push(`${csvCell_(c.category)},${c.amount.toFixed(2)}`));
+  data.byCatIncome.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
   lines.push('');
   lines.push('Разходи по категории');
   lines.push('Категория,Сума');
-  data.byCategory.expense.forEach(c=> lines.push(`${csvCell_(c.category)},${c.amount.toFixed(2)}`));
+  data.byCatExpense.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
   lines.push('');
   lines.push('Разходи по тип документ');
   lines.push('Тип,Сума,Брой');
-  data.expenseByDocType.forEach(d=> lines.push(`${csvCell_(d.doc_type)},${d.amount.toFixed(2)},${d.count}`));
+  data.expenseByDocType.forEach(d=> lines.push(`${q(d.doc_type)},${d.amount},${d.count}`));
   lines.push('');
   lines.push('Топ доставчици');
   lines.push('Доставчик,Сума,Брой');
-  data.suppliersTop.forEach(s=> lines.push(`${csvCell_(s.supplier)},${s.amount.toFixed(2)},${s.count}`));
+  data.suppliersTop.forEach(s=> lines.push(`${q(s.supplier)},${s.amount},${s.count}`));
   lines.push('');
   lines.push('Последни операции');
-  lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user,doc_file_url');
+  lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
   data.recentTx.forEach(t=>{
     lines.push([
-      t.timestamp,
-      t.date,
-      t.store,
-      t.type,
-      t.method,
-      t.category||'',
-      t.supplier||'',
-      t.doc_type||'',
-      t.doc_number||'',
-      t.doc_date||'',
-      t.description||'',
-      Number(t.amount).toFixed(2),
-      t.user||'',
-      t.doc_file_url||''
-    ].map(csvCell_).join(','));
+      t.timestamp,t.date,t.store,t.type,t.method,t.category||'',t.supplier||'',
+      t.doc_type||'',t.doc_number||'',t.doc_date||'',t.description||'',t.amount,t.user||''
+    ].map(q).join(','));
   });
-  const csv = lines.join('\n');
-  const fname = `Report_${from}_${to}_${store}.csv`;
-  return Utilities.newBlob(csv, 'text/csv', fname);
+
+  return Utilities.newBlob(lines.join('\n'),'text/csv',`Report_${from}_${to}_${store}.csv`);
 }
 
 /** ===================== INTERNALS ===================== **/
 function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
-  // Transactions с миграция (+ колони за файл)
-  const txHeader = [
-    'timestamp','date','store','type','method','category','supplier',
-    'doc_type','doc_number','doc_date','description','amount','user',
-    'doc_file_id','doc_file_url'
-  ];
+  // Transactions – миграция, добавяме липсващи колони без да чупим реда
+  const txHeader = ['timestamp','date','store','type','method','category','supplier','doc_type','doc_number','doc_date','description','amount','user'];
   let shTx = ss.getSheetByName(SH_TX);
   if(!shTx){
     shTx = ss.insertSheet(SH_TX);
     shTx.getRange(1,1,1,txHeader.length).setValues([txHeader]);
     shTx.setFrozenRows(1);
   }else{
-    const existing = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0].map(h=>String(h));
+    const existing = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0].map(String);
     txHeader.forEach(h=>{
       if(!existing.includes(h)){
         shTx.getRange(1, existing.length+1).setValue(h);
@@ -588,13 +476,9 @@ function ensureSheets_(){
     'declared_cash','expected_cash','diff','note','user'
   ]);
 
-  // Settings
+  // Settings, Users, Suppliers
   ensureSheetWithHeader_(ss, SH_SET, ['key','value']);
-
-  // Users (по избор)
   ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
-
-  // Suppliers
   ensureSheetWithHeader_(ss, SH_SUP, ['supplier','created_at','created_by']);
 }
 
@@ -625,56 +509,12 @@ function getSheet_(name){
 }
 
 function toDateOnly_(v){
-  // устойчиво към празни/невалидни стойности – връща yyyy-mm-dd или null
   if(!v) return null;
   const d = new Date(v);
   if(isNaN(d.getTime())) return null;
-  const tz = Session.getScriptTimeZone() || TZ;
-  const y = Utilities.formatDate(d, tz, 'yyyy');
-  const m = Utilities.formatDate(d, tz, 'MM');
-  const day = Utilities.formatDate(d, tz, 'dd');
-  return `${y}-${m}-${day}`;
+  return Utilities.formatDate(d, TZ, 'yyyy-MM-dd');
 }
 
 function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
-
-/** ====== Drive helpers for document files ====== **/
-function getDocsFolderId_(){
-  const set = getSheet_(SH_SET);
-  const last = set.getLastRow();
-  if(last >= 2){
-    const rows = set.getRange(2,1,last-1,2).getValues();
-    for(const [k,v] of rows){
-      if(String(k).trim() === 'DOC_FOLDER_ID' && v) return String(v).trim();
-    }
-  }
-  const parent = DriveApp.getRootFolder();
-  const folder = parent.createFolder('StoreDocs');
-  set.appendRow(['DOC_FOLDER_ID', folder.getId()]);
-  return folder.getId();
-}
-
-function saveTxDocumentFile_(fileObj, store, dateOnly){
-  if(!fileObj || !fileObj.bytes) return {id:'', url:''};
-  const rootId = getDocsFolderId_();
-  let folder = DriveApp.getFolderById(rootId);
-
-  const y = (dateOnly||'').split('-')[0] || Utilities.formatDate(new Date(), TZ, 'yyyy');
-  const m = (dateOnly||'').split('-')[1] || Utilities.formatDate(new Date(), TZ, 'MM');
-
-  function getOrCreate_(parent, name){
-    const it = parent.getFoldersByName(name);
-    return it.hasNext() ? it.next() : parent.createFolder(name);
-  }
-
-  folder = getOrCreate_(folder, store || 'Основен');
-  folder = getOrCreate_(folder, y);
-  folder = getOrCreate_(folder, m);
-
-  const blob = Utilities.newBlob(Utilities.base64Decode(fileObj.bytes), fileObj.mimeType || 'application/octet-stream', fileObj.name || 'document');
-  const f = folder.createFile(blob);
-  return { id: f.getId(), url: f.getUrl() };
-}
-
