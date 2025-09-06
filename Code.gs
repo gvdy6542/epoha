@@ -353,63 +353,69 @@ function getReportData(query){
   const byCatIncome = {}, byCatExpense = {};
   const expDoc = {}, supMap = {};
   let income_total=0, expense_total=0, income_count=0, expense_count=0;
+  const recentTx = [];
 
+  // Transactions sheet – build column map each time for reliability
   const sh = getSheet_(SH_TX);
   const last = sh.getLastRow();
-  const recentTx = [];
   if(last >= 2){
+    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(h=>String(h));
+    const cols = {};
+    header.forEach((h,i)=> cols[h]=i);
+
     const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
-    const cols = TX_COLS;
     const rows = data.filter(r=>{
       const d = r[cols.date];
-      const st = r[cols.store];
+      const st = cols.store!==undefined ? r[cols.store] : '';
       if(df && d < df) return false;
       if(dt && d > dt) return false;
       if(store && st !== store) return false;
       return true;
     });
+
     rows.forEach(r=>{
       const t = r[cols.type];
       const amt = Number(r[cols.amount])||0;
       const m = r[cols.method];
-      const cat = r[cols.category]||'';
+      const cat = cols.category!==undefined ? (r[cols.category]||'') : '';
       if(t === 'INCOME'){
         income_total += amt; income_count++;
-        byMethod.income[m] = (byMethod.income[m]||0)+amt;
-        byCatIncome[cat] = (byCatIncome[cat]||0)+amt;
+        if(m) byMethod.income[m] = (byMethod.income[m]||0)+amt;
+        if(cat) byCatIncome[cat] = (byCatIncome[cat]||0)+amt;
       }else if(t === 'EXPENSE'){
         expense_total += amt; expense_count++;
-        byMethod.expense[m] = (byMethod.expense[m]||0)+amt;
-        byCatExpense[cat] = (byCatExpense[cat]||0)+amt;
-        const dtp = r[cols.doc_type]||'';
+        if(m) byMethod.expense[m] = (byMethod.expense[m]||0)+amt;
+        if(cat) byCatExpense[cat] = (byCatExpense[cat]||0)+amt;
+        const dtp = cols.doc_type!==undefined ? (r[cols.doc_type]||'') : '';
         if(dtp){
           const o = expDoc[dtp]||{amount:0,count:0};
           o.amount += amt; o.count++; expDoc[dtp]=o;
         }
-        const sup = r[cols.supplier]||'';
+        const sup = cols.supplier!==undefined ? (r[cols.supplier]||'') : '';
         if(sup){
           const o = supMap[sup]||{amount:0,count:0};
           o.amount += amt; o.count++; supMap[sup]=o;
         }
       }
     });
+
     rows.sort((a,b)=> new Date(b[cols.timestamp]).getTime()-new Date(a[cols.timestamp]).getTime());
     rows.slice(0,100).forEach(r=>{
       recentTx.push({
         timestamp:r[cols.timestamp],
         date:r[cols.date],
-        store:r[cols.store],
+        store: cols.store!==undefined ? r[cols.store] : '',
         type:r[cols.type],
         method:r[cols.method],
-        category:r[cols.category],
-        supplier:r[cols.supplier],
-        doc_type:r[cols.doc_type],
-        doc_number:r[cols.doc_number],
-        doc_date:r[cols.doc_date],
-        description:r[cols.description],
+        category: cols.category!==undefined ? r[cols.category] : '',
+        supplier: cols.supplier!==undefined ? r[cols.supplier] : '',
+        doc_type: cols.doc_type!==undefined ? r[cols.doc_type] : '',
+        doc_number: cols.doc_number!==undefined ? r[cols.doc_number] : '',
+        doc_date: cols.doc_date!==undefined ? r[cols.doc_date] : '',
+        description: cols.description!==undefined ? r[cols.description] : '',
         amount:r[cols.amount],
-        user:r[cols.user],
-        doc_file_url: (TX_COLS.doc_file_url !== undefined) ? (r[TX_COLS.doc_file_url]||'') : ''
+        user: cols.user!==undefined ? r[cols.user] : '',
+        doc_file_url: cols.doc_file_url!==undefined ? (r[cols.doc_file_url]||'') : ''
       });
     });
   }
@@ -420,7 +426,10 @@ function getReportData(query){
   };
   const expenseByDocType = Object.keys(expDoc).map(k=>({doc_type:k, amount: round2_(expDoc[k].amount), count: expDoc[k].count}));
   const suppliersTop = Object.keys(supMap).map(k=>({supplier:k, amount: round2_(supMap[k].amount), count: supMap[k].count})).sort((a,b)=>b.amount-a.amount).slice(0,20);
-  methods.forEach(m=>{ byMethod.income[m]=round2_(byMethod.income[m]||0); byMethod.expense[m]=round2_(byMethod.expense[m]||0); });
+  methods.forEach(m=>{
+    byMethod.income[m]=round2_(byMethod.income[m]||0);
+    byMethod.expense[m]=round2_(byMethod.expense[m]||0);
+  });
 
   // DayClosings
   const shd = getSheet_(SH_DAY);
