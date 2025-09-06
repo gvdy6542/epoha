@@ -98,6 +98,14 @@
                 <input type="date" id="tx_doc_date" />
               </div>
             </div>
+            <!-- НОВО: файл към разход -->
+            <div class="grid2" style="margin-top:8px">
+              <div>
+                <label>Файл (снимка/PDF)</label>
+                <input type="file" id="tx_doc_file" accept="image/*,application/pdf" />
+              </div>
+              <div></div>
+            </div>
           </div>
           <div class="grid2" style="margin-top:8px">
             <div>
@@ -149,7 +157,7 @@
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Файл</th><th>Сума</th><th>Потребител</th>
               </tr>
             </thead>
             <tbody id="tx_rows"></tbody>
@@ -224,7 +232,7 @@
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Файл</th><th>Сума</th><th>Потребител</th>
               </tr>
             </thead>
             <tbody id="rep_recent_rows"></tbody>
@@ -313,7 +321,12 @@
       }).withFailureHandler(err=> alert(err.message||err)).verifyReportPin(pin);
     }
 
+    // НОВО: чака META, после пълни филтрите
     function initReportFilters(){
+      if(!META){
+        google.script.run.withSuccessHandler(m => { META = m; initReportFilters(); }).getMeta();
+        return;
+      }
       byId('rep_from').value = today();
       byId('rep_to').value = today();
       const s = byId('rep_store');
@@ -400,9 +413,11 @@
       byId('expense_extra').style.display = isExp ? 'block' : 'none';
     }
 
+    // НОВО: изпраща файл (ако има) като base64 към addTransaction
     function addTx(){
       const btn = byId('btn_add');
       btn.disabled = true;
+
       const payload = {
         date: byId('date').value,
         store: byId('store').value,
@@ -418,11 +433,32 @@
         payload.doc_number = byId('tx_doc_number').value;
         payload.doc_date = byId('tx_doc_date').value;
       }
-      google.script.run.withSuccessHandler(()=>{
-        byId('tx_amount').value=''; byId('tx_desc').value='';
-        refreshAll();
-        btn.disabled = false;
-      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
+
+      const fileInput = document.getElementById('tx_doc_file');
+      const file = fileInput && fileInput.files && fileInput.files[0];
+
+      function send(){
+        google.script.run.withSuccessHandler(()=>{
+          byId('tx_amount').value=''; byId('tx_desc').value='';
+          if(fileInput) fileInput.value = '';
+          refreshAll();
+          btn.disabled = false;
+        }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; })
+          .addTransaction(payload);
+      }
+
+      if(file){
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = String(reader.result||'').split(',')[1] || '';
+          payload.file = { name: file.name, mimeType: file.type, bytes: base64 };
+          send();
+        };
+        reader.onerror = () => { alert('Грешка при четене на файла'); btn.disabled=false; };
+        reader.readAsDataURL(file);
+      }else{
+        send();
+      }
     }
 
     function saveCount(){
@@ -490,6 +526,7 @@
         <td>${r.doc_number||''}</td>
         <td>${r.doc_date||''}</td>
         <td>${r.description||''}</td>
+        <td>${r.doc_file_url ? `<a href="${r.doc_file_url}" target="_blank">док.</a>` : ''}</td>
         <td>${money(r.amount)}</td>
         <td class="muted">${r.user||''}</td>
       </tr>`).join('');
@@ -511,13 +548,31 @@
       }).withFailureHandler(err=>alert(err.message||err)).exportReportCsv(q);
     }
 
+    // НОВО: чист drawReport с гард + колона Файл
     function drawReport(r){
+      const kpiEl = byId('rep_kpi');
+      const tblM = byId('rep_tbl_method');
+      const tblCI = byId('rep_tbl_cat_income');
+      const tblCE = byId('rep_tbl_cat_expense');
+      const tblDoc = byId('rep_tbl_doc');
+      const tblSup = byId('rep_tbl_suppliers');
+      const tblClose = byId('rep_tbl_closings');
+      const recent = byId('rep_recent_rows');
+
       if(!r || !r.kpi){
-        alert('Няма данни за справка');
+        kpiEl.innerHTML = '';
+        tblM.innerHTML = '';
+        tblCI.innerHTML = '';
+        tblCE.innerHTML = '';
+        tblDoc.innerHTML = '';
+        tblSup.innerHTML = '';
+        tblClose.innerHTML = '';
+        recent.innerHTML = '';
+        alert('Няма данни за справка или достъпът е отказан (PIN).');
         return;
       }
+
       const k = r.kpi;
-      const kpiEl = byId('rep_kpi');
       kpiEl.innerHTML = [
         {label:'Общ приход',v:k.income_total},
         {label:'Общ разход',v:k.expense_total},
@@ -525,26 +580,25 @@
         {label:'Брой операции',v:k.tx_count}
       ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
 
-      const tblM = byId('rep_tbl_method');
       const methods = Object.keys(r.byMethod.income);
-      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' + methods.map(m=>`<tr><td>${m}</td><td>${money(r.byMethod.income[m])}</td><td>${money(r.byMethod.expense[m])}</td></tr>`).join('');
+      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' +
+        methods.map(m=>`<tr><td>${m}</td><td>${money(r.byMethod.income[m])}</td><td>${money(r.byMethod.expense[m])}</td></tr>`).join('');
 
-      const tblCI = byId('rep_tbl_cat_income');
-      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' + r.byCategory.income.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
-      const tblCE = byId('rep_tbl_cat_expense');
-      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' + r.byCategory.expense.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
+        r.byCategory.income.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
-      const tblDoc = byId('rep_tbl_doc');
-      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' + r.expenseByDocType.map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
+        r.byCategory.expense.map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
 
-      const tblSup = byId('rep_tbl_suppliers');
-      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' + r.suppliersTop.map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' +
+        r.expenseByDocType.map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
 
-      const tblClose = byId('rep_tbl_closings');
+      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' +
+        r.suppliersTop.map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+
       tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
         r.closings.map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
 
-      const recent = byId('rep_recent_rows');
       recent.innerHTML = r.recentTx.map(t=>`<tr>
         <td>${new Date(t.timestamp).toLocaleTimeString()}</td>
         <td>${t.date}</td>
@@ -557,6 +611,7 @@
         <td>${t.doc_number||''}</td>
         <td>${t.doc_date||''}</td>
         <td>${t.description||''}</td>
+        <td>${t.doc_file_url ? `<a href="${t.doc_file_url}" target="_blank">док.</a>` : ''}</td>
         <td>${money(t.amount)}</td>
         <td class="muted">${t.user||''}</td>
       </tr>`).join('');
