@@ -512,6 +512,10 @@
     }
 
     function drawReport(r){
+      if(!r || !r.kpi){
+        alert('Няма данни за справка');
+        return;
+      }
       const k = r.kpi;
       const kpiEl = byId('rep_kpi');
       kpiEl.innerHTML = [
