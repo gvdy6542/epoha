@@ -1,625 +1,580 @@
-/** ===================== CONFIG ===================== **/
-const TZ      = 'Europe/Sofia';
-const SS_ID   = SpreadsheetApp.getActive().getId();
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Отчитане на магазин</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}
+    .wrap{max-width:1200px;margin:20px auto;padding:0 16px}
+    .row{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
+    .card h3{margin:0 0 8px;font-size:16px}
+    label{display:block;font-size:12px;margin-bottom:6px;color:#475569}
+    input,select,textarea,button{width:100%;padding:8px;border:1px solid #d0d7de;border-radius:8px;font-size:14px}
+    button{cursor:pointer}
+    .btn{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;font-size:13px;vertical-align:top}
+    th{background:#f8fafc}
+    .stat{display:flex;gap:8px;align-items:baseline}
+    .stat .v{font-weight:700}
+    .right{justify-self:end}
+    .muted{color:#64748b}
+    .ok{color:#16a34a}
+    .bad{color:#dc2626}
+    .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="btn_tab_main" class="btn" onclick="showTab('main')">Основно</button>
+      <button id="btn_tab_reports" onclick="openReports()">Справки</button>
+    </div>
 
-const SH_TX   = 'Transactions';     // Операции (приход/разход)
-const SH_CNT  = 'CashCounts';       // Броене на каса по деноминации
-const SH_DAY  = 'DayClosings';      // Дневни отчети / приключване
-const SH_SET  = 'Settings';         // Настройки (по избор)
-const SH_USERS= 'Users';            // Потребители (по избор)
-const SH_SUP  = 'Suppliers';        // Доставчици
+    <div id="tab_main">
+      <div class="row" style="margin-bottom:12px">
+        <div class="card" style="grid-column: span 12; display:grid; grid-template-columns:repeat(12,1fr); gap:12px; align-items:end;">
+          <div style="grid-column: span 3">
+            <label>Магазин</label>
+            <select id="store"></select>
+          </div>
+          <div style="grid-column: span 3">
+            <label>Дата</label>
+            <input type="date" id="date" />
+          </div>
+          <div class="right" style="grid-column: span 6; display:flex; gap:8px; justify-content:flex-end; align-items:end">
+            <button class="btn" onclick="refreshAll()">Обнови</button>
+            <button onclick="openWebApp()">Отвори в нов таб</button>
+          </div>
+        </div>
+      </div>
 
-const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
-const DEFAULT_METHODS = ['CASH','CARD','BANK'];
-const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
-const DOC_TYPES = [
-  'INVOICE','CREDIT_NOTE','DEBIT_NOTE','DELIVERY_NOTE','FISCAL_RECEIPT',
-  'CASH_VOUCHER_OUT','BANK_PAYMENT','BANK_FEE','VAT_PROTOCOL','RECEIPT','CONTRACT','OTHER'
-];
+      <div class="row">
+        <div class="card" style="grid-column: span 5">
+          <h3>Операция (приход/разход)</h3>
+          <div class="grid3">
+            <div>
+              <label>Тип</label>
+              <select id="tx_type">
+                <option value="INCOME">Приход</option>
+                <option value="EXPENSE">Разход</option>
+              </select>
+            </div>
+            <div>
+              <label>Метод</label>
+              <select id="tx_method"></select>
+            </div>
+            <div>
+              <label>Категория</label>
+              <select id="tx_category"></select>
+            </div>
+          </div>
+          <div id="expense_extra" style="display:none;margin-top:8px">
+            <div class="grid2">
+              <div>
+                <label>Доставчик</label>
+                <div style="display:flex;gap:4px">
+                  <select id="tx_supplier" style="flex:1"></select>
+                  <button type="button" onclick="openSupplierModal()">Нов</button>
+                </div>
+              </div>
+              <div>
+                <label>Тип документ</label>
+                <select id="tx_doc_type"></select>
+              </div>
+            </div>
+            <div class="grid2" style="margin-top:8px">
+              <div>
+                <label>№ документ</label>
+                <input type="text" id="tx_doc_number" />
+              </div>
+              <div>
+                <label>Дата на документа</label>
+                <input type="date" id="tx_doc_date" />
+              </div>
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <div>
+              <label>Сума</label>
+              <input type="number" id="tx_amount" step="0.01" />
+            </div>
+            <div>
+              <label>Описание</label>
+              <input type="text" id="tx_desc" />
+            </div>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
+            <button class="btn" id="btn_add" onclick="addTx()">Добави</button>
+          </div>
+        </div>
 
-let TX_COLS = {}; // map колона->индекс за Transactions
+        <div class="card" style="grid-column: span 7">
+          <h3>Обобщение за деня</h3>
+          <div id="summary" class="grid3"></div>
+          <div class="muted" style="margin-top:8px" id="summary_note"></div>
+        </div>
+      </div>
 
-/** ===================== WEB APP & MENU ===================== **/
-function onOpen(){
-  SpreadsheetApp.getUi()
-    .createMenu('Отчитане')
-    .addItem('Отвори приложението', 'showWebApp_')
-    .addToUi();
-}
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 5">
+          <h3>Броене на каса</h3>
+          <div id="denoms" class="grid3"></div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+            <div class="stat">Декларирани пари в каса: <span class="v" id="declared">0.00</span> лв</div>
+            <button class="btn" onclick="saveCount()">Запиши броене</button>
+          </div>
+        </div>
 
-function showWebApp_(){
-  const html = HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Отчитане на магазин')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .setWidth(1200)
-    .setHeight(800);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
-}
+        <div class="card" style="grid-column: span 7">
+          <h3>Приключване на ден</h3>
+          <label>Бележка</label>
+          <textarea id="close_note" rows="3" placeholder="Коментар"></textarea>
+          <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
+            <div class="muted">Използва декларираната сума от броенето.</div>
+            <button class="btn" onclick="closeDay()">Приключи деня</button>
+          </div>
+          <div id="close_result" style="margin-top:8px"></div>
+        </div>
+      </div>
 
-function doGet(){
-  ensureSheets_();
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Отчитане на магазин')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Последни операции</h3>
+          <div class="grid3" style="margin-bottom:8px">
+            <div>
+              <label>От дата</label>
+              <input type="date" id="tx_from" />
+            </div>
+            <div>
+              <label>До дата</label>
+              <input type="date" id="tx_to" />
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:flex-end">
+              <button class="btn" onclick="refreshTx()">Филтър</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+              </tr>
+            </thead>
+            <tbody id="tx_rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-/** ===================== PUBLIC API ===================== **/
-function getMeta(){
-  ensureSheets_();
-  // Може да добавиш override от Settings при нужда – за сега държим дефолтите
-  return {
-    denoms: getExistingOrDefaultDenoms_(),
-    methods: DEFAULT_METHODS.slice(),
-    types: DEFAULT_TYPES.slice(),
-    stores: ['Основен'],
-    categories: {
-      INCOME: ['Продажби', 'Друг приход'],
-      EXPENSE: ['Стока', 'Наем', 'Комунални', 'Касови разходи', 'Друго']
+    <div id="tab_reports" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div class="grid3">
+          <div>
+            <label>Дата от</label>
+            <input type="date" id="rep_from" />
+          </div>
+          <div>
+            <label>Дата до</label>
+            <input type="date" id="rep_to" />
+          </div>
+          <div>
+            <label>Магазин</label>
+            <select id="rep_store"></select>
+          </div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn" onclick="generateReport()">Генерирай</button>
+          <button onclick="exportReport()">Експорт CSV</button>
+        </div>
+      </div>
+
+      <div id="rep_kpi" class="grid4"></div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>По метод</h3>
+          <table id="rep_tbl_method"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 6">
+          <h3>Приходи по категории</h3>
+          <table id="rep_tbl_cat_income"></table>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>Разходи по категории</h3>
+          <table id="rep_tbl_cat_expense"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 6">
+          <h3>Разходи по тип документ</h3>
+          <table id="rep_tbl_doc"></table>
+        </div>
+        <div class="card" style="grid-column: span 6">
+          <h3>Топ доставчици</h3>
+          <table id="rep_tbl_suppliers"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Приключвания</h3>
+          <table id="rep_tbl_closings"></table>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="grid-column: span 12">
+          <h3>Последни операции</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+              </tr>
+            </thead>
+            <tbody id="rep_recent_rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal_supplier" class="modal">
+    <div class="card">
+      <h3>Нов доставчик</h3>
+      <input type="text" id="new_supplier_name" />
+      <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="createSupplier()">Добави</button>
+        <button onclick="closeSupplierModal()">Отказ</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let META = null;
+
+    const DOC_TYPES = [
+      {v:'INVOICE',label:'Фактура'},
+      {v:'CREDIT_NOTE',label:'Кредитно известие'},
+      {v:'DEBIT_NOTE',label:'Дебитно известие'},
+      {v:'DELIVERY_NOTE',label:'Стокова разписка'},
+      {v:'FISCAL_RECEIPT',label:'Фискален бон'},
+      {v:'CASH_VOUCHER_OUT',label:'Разходен касов ордер'},
+      {v:'BANK_PAYMENT',label:'Банков превод'},
+      {v:'BANK_FEE',label:'Банкова такса'},
+      {v:'VAT_PROTOCOL',label:'Протокол по чл.117'},
+      {v:'RECEIPT',label:'Разписка'},
+      {v:'CONTRACT',label:'Договор'},
+      {v:'OTHER',label:'Друг'}
+    ];
+    const DOC_LABEL = {}; DOC_TYPES.forEach(d=>DOC_LABEL[d.v]=d.label);
+
+    function openWebApp(){ window.open(location.href, '_blank'); }
+
+    function today(){
+      const d = new Date();
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${d.getFullYear()}-${mm}-${dd}`;
     }
-  };
-}
 
-function listSuppliers(){
-  ensureSheets_();
-  const sh = getSheet_(SH_SUP);
-  const last = sh.getLastRow();
-  if(last < 2) return [];
-  const arr = sh.getRange(2,1,last-1,1).getValues().map(r=>String(r[0]||''));
-  arr.sort((a,b)=> a.toLowerCase().localeCompare(b.toLowerCase()));
-  return arr;
-}
-
-function addSupplier(name){
-  ensureSheets_();
-  let n = String(name||'').trim().replace(/\s+/g,' ');
-  if(n.length < 2) throw new Error('Невалидно име на доставчик');
-  const sh = getSheet_(SH_SUP);
-  const last = sh.getLastRow();
-  const existing = last < 2 ? [] : sh.getRange(2,1,last-1,1).getValues().map(r=>String(r[0]||'').toLowerCase());
-  if(existing.includes(n.toLowerCase())) throw new Error('Доставчик вече съществува');
-  const user = Session.getActiveUser().getEmail() || 'anonymous';
-  sh.appendRow([n, new Date(), user]);
-  return {ok:true};
-}
-
-/**
- * payload: {date, store, type, method, category, description, amount,
- *           supplier?, doc_type?, doc_number?, doc_date?}
- */
-function addTransaction(payload){
-  ensureSheets_();
-  const required = ['date','type','method','amount'];
-  required.forEach(k=>{
-    if(payload[k] === undefined || payload[k] === null || payload[k] === ''){
-      throw new Error('Липсва поле: '+k);
+    function money(n){
+      const v = Number(String(n??0).replace(',','.')) || 0;
+      return v.toFixed(2);
     }
-  });
+    function byId(id){ return document.getElementById(id); }
 
-  const type = String(payload.type||'').toUpperCase();
-  if(!DEFAULT_TYPES.includes(type)) throw new Error('Невалиден тип (INCOME/EXPENSE)');
-
-  const method = String(payload.method||'').toUpperCase();
-  if(!getMeta().methods.includes(method)) throw new Error('Невалиден метод на плащане');
-
-  let amount = Number(String(payload.amount).replace(',','.'));
-  if(isNaN(amount)) throw new Error('Сумата не е число');
-
-  const dateOnly = toDateOnly_(payload.date);
-  if(!dateOnly) throw new Error('Невалидна дата');
-
-  const user = Session.getActiveUser().getEmail() || 'anonymous';
-
-  let supplier = payload.supplier || '';
-  let docType = payload.doc_type || '';
-  let docNumber = payload.doc_number || '';
-  let docDate = payload.doc_date ? toDateOnly_(payload.doc_date) : '';
-
-  if(type === 'EXPENSE'){
-    supplier = String(supplier||'').trim();
-    if(!supplier) throw new Error('Доставчикът е задължителен');
-    docType = String(docType||'').toUpperCase();
-    if(!DOC_TYPES.includes(docType)) throw new Error('Невалиден тип документ');
-    if(['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(docType)){
-      if(!docNumber) throw new Error('Липсва номер на документ');
+    function showTab(name){
+      byId('tab_main').style.display = name==='main'?'block':'none';
+      byId('tab_reports').style.display = name==='reports'?'block':'none';
     }
-    if(!docDate) throw new Error('Липсва дата на документа');
-    if(docDate > toDateOnly_(new Date())) throw new Error('Дата на документа е в бъдещето');
-    if(docType === 'CREDIT_NOTE') amount = -Math.abs(amount);
-  }
 
-  const cols = TX_COLS;
-  const row = new Array(Object.keys(cols).length).fill('');
-  row[cols.timestamp]    = new Date();
-  row[cols.date]         = dateOnly;
-  row[cols.store]        = payload.store || 'Основен';
-  row[cols.type]         = type;
-  row[cols.method]       = method;
-  row[cols.category]     = payload.category || '';
-  if(cols.supplier     !== undefined) row[cols.supplier]     = supplier;
-  if(cols.doc_type     !== undefined) row[cols.doc_type]     = docType;
-  if(cols.doc_number   !== undefined) row[cols.doc_number]   = docNumber;
-  if(cols.doc_date     !== undefined) row[cols.doc_date]     = docDate;
-  row[cols.description]  = payload.description || '';
-  row[cols.amount]       = round2_(amount);
-  row[cols.user]         = user;
-
-  const sh = getSheet_(SH_TX);
-  sh.appendRow(row);
-  return {ok:true};
-}
-
-function listTransactions(query){
-  ensureSheets_();
-  const sh = getSheet_(SH_TX);
-  const last = sh.getLastRow();
-  if(last < 2) return [];
-  const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
-  const cols = TX_COLS;
-
-  const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
-
-  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
-  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
-  const store = query?.store || null;
-
-  let rows = data.filter(r => {
-    const date = r[cols.date];
-    const st = r[cols.store];
-    let ok = true;
-    if(df && date < df) ok = false;
-    if(dt && date > dt) ok = false;
-    if(store && st !== store) ok = false;
-    return ok;
-  });
-  rows.sort((a,b)=> new Date(b[cols.timestamp]).getTime()-new Date(a[cols.timestamp]).getTime());
-  const lim = Math.min(Number(query?.limit||200), 1000);
-  rows = rows.slice(0, lim);
-
-  return rows.map(r=>({
-    timestamp: r[cols.timestamp],
-    date: r[cols.date],
-    store: r[cols.store],
-    type: r[cols.type],
-    method: r[cols.method],
-    category: cols.category!==undefined ? r[cols.category] : '',
-    supplier: cols.supplier!==undefined ? r[cols.supplier] : '',
-    doc_type: cols.doc_type!==undefined ? r[cols.doc_type] : '',
-    doc_number: cols.doc_number!==undefined ? r[cols.doc_number] : '',
-    doc_date: cols.doc_date!==undefined ? r[cols.doc_date] : '',
-    description: cols.description!==undefined ? r[cols.description] : '',
-    amount: toNum_(r[cols.amount]),
-    user: cols.user!==undefined ? r[cols.user] : ''
-  }));
-}
-
-function saveCashCount(payload){
-  // payload: {date, store, counts: {denom: qty}}
-  ensureSheets_();
-  const meta = getMeta();
-  const sh = getSheet_(SH_CNT);
-  const dateOnly = toDateOnly_(payload.date);
-  const store = payload.store || 'Основен';
-  const user = Session.getActiveUser().getEmail() || 'anonymous';
-
-  const denoms = meta.denoms;
-  let total = 0;
-  const qtys = denoms.map(d => {
-    const q = Number(payload.counts?.[String(d)]||0);
-    total += d * q;
-    return q;
-  });
-
-  sh.appendRow([
-    new Date(),          // timestamp
-    dateOnly,
-    store,
-    ...qtys,
-    round2_(total),
-    user
-  ]);
-  return {ok:true, total: round2_(total)};
-}
-
-function getDailySummary(date, store){
-  ensureSheets_();
-  const dateOnly = toDateOnly_(date);
-  const tx = listTransactions({dateFrom: dateOnly, dateTo: dateOnly, store: store, limit: 5000});
-  const methods = getMeta().methods;
-  const sum = { sales:{}, expenses:{}, total:{ sales:0, expenses:0 } };
-  methods.forEach(m=>{ sum.sales[m]=0; sum.expenses[m]=0; });
-
-  tx.forEach(t => {
-    if(t.type === 'INCOME'){
-      sum.sales[t.method] += Number(t.amount)||0;
-      sum.total.sales += Number(t.amount)||0;
-    }else if(t.type === 'EXPENSE'){
-      sum.expenses[t.method] += Number(t.amount)||0;
-      sum.total.expenses += Number(t.amount)||0;
+    function openReports(){
+      showTab('reports');
+      initReportFilters();
     }
-  });
 
-  const expectedCash = round2_( (sum.sales.CASH||0) - (sum.expenses.CASH||0) );
-  return {date: dateOnly, store: store||'Основен', ...sum, expectedCash};
-}
+    function initReportFilters(){
+      if(!META){ google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta(); return; }
+      byId('rep_from').value = today();
+      byId('rep_to').value = today();
+      const s = byId('rep_store');
+      const stores = Array.isArray(META.stores) ? META.stores : [];
+      s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+    }
 
-function closeDay(payload){
-  // payload: {date, store, declaredCash, note}
-  ensureSheets_();
-  const dateOnly = toDateOnly_(payload.date);
-  const store = payload.store || 'Основен';
-  const declared = round2_(Number(payload.declaredCash)||0);
-  const note = String(payload.note||'');
-  const user = Session.getActiveUser().getEmail() || 'anonymous';
+    function loadSuppliers(sel){
+      google.script.run.withSuccessHandler(list=>{
+        const s = byId('tx_supplier');
+        const arr = Array.isArray(list) ? list : [];
+        s.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
+        if(sel) s.value = sel;
+      }).listSuppliers();
+    }
 
-  const s = getDailySummary(dateOnly, store);
-  const expectedCash = round2_(s.expectedCash);
-  const diff = round2_(declared - expectedCash);
+    function openSupplierModal(){
+      byId('new_supplier_name').value='';
+      document.getElementById('modal_supplier').style.display='flex';
+    }
+    function closeSupplierModal(){ document.getElementById('modal_supplier').style.display='none'; }
+    function createSupplier(){
+      const name = byId('new_supplier_name').value;
+      google.script.run.withSuccessHandler(()=>{
+        closeSupplierModal();
+        loadSuppliers(name);
+      }).withFailureHandler(err=> alert(err.message||err)).addSupplier(name);
+    }
 
-  const sh = getSheet_(SH_DAY);
-  sh.appendRow([
-    new Date(),
-    dateOnly,
-    store,
-    round2_(s.sales.CASH||0),
-    round2_(s.sales.CARD||0),
-    round2_(s.sales.BANK||0),
-    round2_(s.expenses.CASH||0),
-    round2_(s.expenses.CARD||0),
-    round2_(s.expenses.BANK||0),
-    declared,
-    expectedCash,
-    diff,
-    note,
-    user
-  ]);
+    function setDeclared(){
+      let total = 0;
+      const boxes = document.querySelectorAll('[data-denom]');
+      boxes.forEach(b=>{
+        const d = Number(b.dataset.denom);
+        const q = Number(b.value||0);
+        total += d*q;
+      });
+      byId('declared').textContent = money(total);
+      return total;
+    }
 
-  return {ok:true, expectedCash, declared, diff};
-}
+    function fillDenoms(){
+      const wrap = byId('denoms');
+      wrap.innerHTML = '';
+      (META.denoms||[]).forEach(d => {
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <label>${Number(d).toFixed(2)} лв – брой</label>
+          <input type="number" min="0" step="1" data-denom="${d}" value="0" oninput="setDeclared()" />
+        `;
+        wrap.appendChild(div);
+      });
+      setDeclared();
+    }
 
-/** ===================== REPORT V2 (без PIN) ===================== **/
-function getReportV2(query){
-  ensureSheets_();
+    function fillDocTypes(){
+      const s = byId('tx_doc_type');
+      s.innerHTML = DOC_TYPES.map(o=>`<option value="${o.v}">${o.label}</option>`).join('');
+    }
 
-  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
-  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
-  const store = (query?.store || '').trim() || '';
+    function fillMeta(meta){
+      META = meta;
+      byId('store').innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      byId('tx_method').innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
+      refillCategories();
+      byId('date').value = today();
+      byId('tx_from').value = today();
+      byId('tx_to').value = today();
+      fillDenoms();
+      fillDocTypes();
+      loadSuppliers();
+      refreshAll();
+      onTypeChange();
+    }
 
-  const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
-  const round2 = n => Math.round(n*100)/100;
+    function refillCategories(){
+      const type = byId('tx_type').value;
+      const c = byId('tx_category');
+      const arr = (META.categories[type]||[]);
+      c.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
+    }
 
-  const res = {
-    range:{from: df||'', to: dt||'', store: store||'Всички'},
-    kpi:{income_total:0,expense_total:0,net:0,tx_count:0,income_count:0,expense_count:0},
-    byMethod:[], byCatIncome:[], byCatExpense:[],
-    expenseByDocType:[], suppliersTop:[], closings:[], recentTx:[]
-  };
+    function onTypeChange(){
+      refillCategories();
+      const isExp = byId('tx_type').value === 'EXPENSE';
+      byId('expense_extra').style.display = isExp ? 'block' : 'none';
+    }
 
-  // Transactions
-  const sh = getSheet_(SH_TX);
-  const last = sh.getLastRow();
-  if(last>=2){
-    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-    const c={}; header.forEach((h,i)=>c[h]=i);
-    const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
-
-    const byMethod={}, byCatIn={}, byCatEx={}, byDoc={}, bySup={}, perDay={};
-
-    const rows = data.filter(r=>{
-      const d=r[c.date]; const st=r[c.store];
-      if(df && d < df) return false;
-      if(dt && d > dt) return false;
-      if(store && st !== store) return false;
-      return true;
-    });
-
-    rows.forEach(r=>{
-      const t=r[c.type], m=r[c.method], cat=r[c.category], sup=r[c.supplier], dtp=r[c.doc_type], amt=toNum_(r[c.amount]);
-      const key = `${r[c.date]}|${r[c.store]}`;
-      const pd = perDay[key] || (perDay[key]={income:0,expenses:{}});
-      if(!byMethod[m]) byMethod[m]={income:0,expense:0};
-      if(t==='INCOME'){
-        res.kpi.income_total += amt; res.kpi.income_count++;
-        byMethod[m].income += amt;
-        if(cat) byCatIn[cat] = (byCatIn[cat]||0) + amt;
-        pd.income += amt;
-      }else if(t==='EXPENSE'){
-        res.kpi.expense_total += amt; res.kpi.expense_count++;
-        byMethod[m].expense += amt;
-        if(cat) byCatEx[cat] = (byCatEx[cat]||0) + amt;
-        if(dtp){ const o=byDoc[dtp]||{amount:0,count:0}; o.amount+=amt; o.count++; byDoc[dtp]=o; }
-        if(sup){
-          const o=bySup[sup]||{amount:0,count:0}; o.amount+=amt; o.count++; bySup[sup]=o;
-          pd.expenses[sup] = (pd.expenses[sup]||0) + amt;
-        }
+    function addTx(){
+      const btn = byId('btn_add');
+      btn.disabled = true;
+      const payload = {
+        date: byId('date').value,
+        store: byId('store').value,
+        type: byId('tx_type').value,
+        method: byId('tx_method').value,
+        category: byId('tx_category').value,
+        description: byId('tx_desc').value,
+        amount: Number(byId('tx_amount').value||0)
+      };
+      if(payload.type === 'EXPENSE'){
+        payload.supplier = byId('tx_supplier').value;
+        payload.doc_type = byId('tx_doc_type').value;
+        payload.doc_number = byId('tx_doc_number').value;
+        payload.doc_date = byId('tx_doc_date').value;
       }
-    });
-
-    rows.sort((a,b)=> new Date(b[c.timestamp]) - new Date(a[c.timestamp]));
-    rows.slice(0,100).forEach(r=>{
-      res.recentTx.push({
-        timestamp:r[c.timestamp],
-        date:r[c.date],
-        store:r[c.store],
-        type:r[c.type],
-        method:r[c.method],
-        category:r[c.category]||'',
-        supplier:r[c.supplier]||'',
-        doc_type:r[c.doc_type]||'',
-        doc_number:c.doc_number!==undefined? (r[c.doc_number]||'') : '',
-        doc_date:c.doc_date!==undefined? (r[c.doc_date]||'') : '',
-        description:r[c.description]||'',
-        amount: toNum_(r[c.amount]),
-        user:r[c.user]||''
-      });
-    });
-
-    Object.keys(byMethod).forEach(k=>res.byMethod.push({method:k||'-',income:round2(byMethod[k].income),expense:round2(byMethod[k].expense)}));
-    Object.keys(byCatIn).forEach(k=>res.byCatIncome.push({category:k,amount:round2(byCatIn[k])}));
-    Object.keys(byCatEx).forEach(k=>res.byCatExpense.push({category:k,amount:round2(byCatEx[k])}));
-    Object.keys(byDoc).forEach(k=>res.expenseByDocType.push({doc_type:k,amount:round2(byDoc[k].amount),count:byDoc[k].count}));
-    Object.keys(bySup).forEach(k=>res.suppliersTop.push({supplier:k,amount:round2(bySup[k].amount),count:bySup[k].count}));
-
-    res.kpi.income_total = round2(res.kpi.income_total);
-    res.kpi.expense_total= round2(res.kpi.expense_total);
-    res.kpi.net          = round2(res.kpi.income_total - res.kpi.expense_total);
-    res.kpi.tx_count     = res.kpi.income_count + res.kpi.expense_count;
-  }
-
-  // CashCounts per day
-  const shc = getSheet_(SH_CNT);
-  const lastc = shc.getLastRow();
-  const cashMap = {};
-  if(lastc >= 2){
-    const hc = shc.getRange(1,1,1,shc.getLastColumn()).getValues()[0];
-    const ic = {}; hc.forEach((v,i)=>ic[v]=i);
-    const denomCols = Object.keys(ic).filter(k=>k.startsWith('qty_'));
-    const datac = shc.getRange(2,1,lastc-1,shc.getLastColumn()).getValues();
-    datac.forEach(r=>{
-      const d = r[ic.date];
-      const st = r[ic.store];
-      if(df && d<df) return;
-      if(dt && d>dt) return;
-      if(store && st!==store) return;
-      const key = `${d}|${st}`;
-      const arr = [];
-      denomCols.forEach(col=>{
-        const qty = r[ic[col]];
-        if(qty){ const denom = col.replace('qty_',''); arr.push(`${denom}x${qty}`); }
-      });
-      cashMap[key] = arr.join(';');
-    });
-  }
-
-  // DayClosings
-  const shd = getSheet_(SH_DAY);
-  const lastd = shd.getLastRow();
-  if(lastd >= 2){
-    const h = shd.getRange(1,1,1,shd.getLastColumn()).getValues()[0];
-    const idx = {}; h.forEach((v,i)=>idx[v]=i);
-    const data = shd.getRange(2,1,lastd-1,shd.getLastColumn()).getValues();
-    data.forEach(r=>{
-      const d = r[idx.date];
-      const st = r[idx.store];
-      if(df && d<df) return;
-      if(dt && d>dt) return;
-      if(store && st!==store) return;
-      const key = `${d}|${st}`;
-      const pd = perDay[key] || {income:0,expenses:{}};
-      const expStr = Object.keys(pd.expenses).map(s=>`${s}:${round2(pd.expenses[s])}`).join(';');
-      res.closings.push({
-        date:d, store:st,
-        sales_cash:r[idx.sales_cash]||0,
-        sales_card:r[idx.sales_card]||0,
-        sales_bank:r[idx.sales_bank]||0,
-        expenses_cash:r[idx.expenses_cash]||0,
-        expenses_card:r[idx.expenses_card]||0,
-        expenses_bank:r[idx.expenses_bank]||0,
-        declared_cash:r[idx.declared_cash]||0,
-        expected_cash:r[idx.expected_cash]||0,
-        diff:r[idx.diff]||0,
-        banknotes:cashMap[key]||'',
-        expense_suppliers:expStr,
-        income_total:round2(pd.income)
-      });
-    });
-  }
-
-  return res;
-}
-
-function exportReportCsvV2(query){
-  const data = getReportV2(query);
-  const q = v => `"${String(v??'').replace(/"/g,'""').replace(/\n/g,' ')}"`;
-  const lines = [];
-  const from = data.range.from||'', to = data.range.to||'', store = data.range.store||'Всички';
-
-  lines.push(`Период от,${from},до,${to},Магазин,${store}`);
-  lines.push('');
-  lines.push('KPI');
-  lines.push(`Общ приход,${data.kpi.income_total}`);
-  lines.push(`Общ разход,${data.kpi.expense_total}`);
-  lines.push(`Нето,${data.kpi.net}`);
-  lines.push(`Брой операции,${data.kpi.tx_count}`);
-  lines.push('');
-  lines.push('По метод');
-  lines.push('Метод,Приход,Разход');
-  data.byMethod.forEach(m=> lines.push(`${q(m.method)},${m.income},${m.expense}`));
-  lines.push('');
-  lines.push('Приходи по категории');
-  lines.push('Категория,Сума');
-  data.byCatIncome.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
-  lines.push('');
-  lines.push('Разходи по категории');
-  lines.push('Категория,Сума');
-  data.byCatExpense.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
-  lines.push('');
-  lines.push('Разходи по тип документ');
-  lines.push('Тип,Сума,Брой');
-  data.expenseByDocType.forEach(d=> lines.push(`${q(d.doc_type)},${d.amount},${d.count}`));
-  lines.push('');
-  lines.push('Топ доставчици');
-  lines.push('Доставчик,Сума,Брой');
-  data.suppliersTop.forEach(s=> lines.push(`${q(s.supplier)},${s.amount},${s.count}`));
-  lines.push('');
-  lines.push('Дневни отчети');
-  lines.push('Дата,Магазин,Прод. каса,Прод. карта,Прод. банка,Разх. каса,Разх. карта,Разх. банка,Декл. каса,Очакв. каса,Разлика,Банкноти,Разходи доставчици,Приход');
-  data.closings.forEach(c=> lines.push(`${c.date},${q(c.store)},${c.sales_cash},${c.sales_card},${c.sales_bank},${c.expenses_cash},${c.expenses_card},${c.expenses_bank},${c.declared_cash},${c.expected_cash},${c.diff},${q(c.banknotes)},${q(c.expense_suppliers)},${c.income_total}`));
-  lines.push('');
-  lines.push('Последни операции');
-  lines.push('timestamp,date,store,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
-  data.recentTx.forEach(t=>{
-    lines.push([
-      t.timestamp,t.date,t.store,t.type,t.method,t.category||'',t.supplier||'',
-      t.doc_type||'',t.doc_number||'',t.doc_date||'',t.description||'',t.amount,t.user||''
-    ].map(q).join(','));
-  });
-
-  return Utilities.newBlob(lines.join('\n'),'text/csv',`Report_${from}_${to}_${store}.csv`);
-}
-
-/** ===================== INTERNALS ===================== **/
-function ensureSheets_(){
-  const ss = SpreadsheetApp.openById(SS_ID);
-
-  // Transactions – миграция, добавяме липсващи колони без да чупим реда
-  const txHeader = ['timestamp','date','store','type','method','category','supplier','doc_type','doc_number','doc_date','description','amount','user'];
-  let shTx = ss.getSheetByName(SH_TX);
-  if(!shTx){
-    shTx = ss.insertSheet(SH_TX);
-    shTx.getRange(1,1,1,txHeader.length).setValues([txHeader]);
-    shTx.setFrozenRows(1);
-  }else{
-    const existing = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0].map(String);
-    txHeader.forEach(h=>{
-      if(!existing.includes(h)){
-        shTx.getRange(1, existing.length+1).setValue(h);
-        existing.push(h);
-      }
-    });
-    if(shTx.getFrozenRows() === 0) shTx.setFrozenRows(1);
-  }
-  // map header -> index
-  TX_COLS = {};
-  const header = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0];
-  header.forEach((h,i)=>{ TX_COLS[String(h)] = i; });
-
-  // CashCounts
-  const denoms = getExistingOrDefaultDenoms_();
-  ensureSheetWithHeader_(ss, SH_CNT, [
-    'timestamp','date','store', ...denoms.map(d=>`qty_${d}`), 'total','user'
-  ]);
-
-  // DayClosings
-  ensureSheetWithHeader_(ss, SH_DAY, [
-    'timestamp','date','store',
-    'sales_cash','sales_card','sales_bank',
-    'expenses_cash','expenses_card','expenses_bank',
-    'declared_cash','expected_cash','diff','note','user'
-  ]);
-
-  // Settings, Users, Suppliers
-  ensureSheetWithHeader_(ss, SH_SET, ['key','value']);
-  ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
-  ensureSheetWithHeader_(ss, SH_SUP, ['supplier','created_at','created_by']);
-}
-
-function ensureSheetWithHeader_(ss, name, header){
-  let sh = ss.getSheetByName(name);
-  if(!sh) sh = ss.insertSheet(name);
-  if(sh.getLastRow() === 0){
-    sh.getRange(1,1,1,header.length).setValues([header]);
-    sh.setFrozenRows(1);
-  }
-}
-
-function getExistingOrDefaultDenoms_(){
-  const ss = SpreadsheetApp.openById(SS_ID);
-  let sh = ss.getSheetByName(SH_CNT);
-  if(!sh || sh.getLastRow() === 0) return DEFAULT_DENOMS.slice();
-  const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const cols = header.filter(h => String(h).startsWith('qty_'));
-  if(cols.length === 0) return DEFAULT_DENOMS.slice();
-  return cols.map(c => Number(String(c).replace('qty_','')) );
-}
-
-function getSheet_(name){
-  const ss = SpreadsheetApp.openById(SS_ID);
-  const sh = ss.getSheetByName(name);
-  if(!sh) throw new Error('Липсва лист: '+name);
-  return sh;
-}
-
-function toDateOnly_(v){
-  if(!v) return null;
-  const d = new Date(v);
-  if(isNaN(d.getTime())) return null;
-  return Utilities.formatDate(d, TZ, 'yyyy-MM-dd');
-}
-
-function round2_(n){
-  return Math.round((Number(n)||0)*100)/100;
-}
-
-/** ===================== TELEGRAM BOT ===================== **/
-const TG_TOKEN   = PropertiesService.getScriptProperties().getProperty('TG_TOKEN');
-const TG_ALLOWED = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '').split(',').filter(Boolean);
-const TG_API     = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
-
-function doPost(e){
-  if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
-  const update = JSON.parse(e.postData.contents || '{}');
-  const msg = update.message;
-  if(!msg || !msg.text) return ContentService.createTextOutput('ok');
-  const chatId = String(msg.chat.id);
-  if(TG_ALLOWED.length && !TG_ALLOWED.includes(chatId)){
-    telegramSend_(chatId, 'Нямате права за достъп');
-    return ContentService.createTextOutput('ok');
-  }
-  const text = msg.text.trim();
-  try{
-    let m;
-    if((m = text.match(/^\/prihod\s+(\d+(?:\.\d+)?)\s+(.+)/i))){
-      const [, amount, desc] = m;
-      addTransaction({
-        date: new Date().toISOString().slice(0,10),
-        type: 'INCOME',
-        method: 'CASH',
-        amount,
-        description: desc
-      });
-      telegramSend_(chatId, 'Приход записан');
-    }else if((m = text.match(/^\/razhod\s+(\d+(?:\.\d+)?)\s+(.+)/i))){
-      const [, amount, desc] = m;
-      addTransaction({
-        date: new Date().toISOString().slice(0,10),
-        type: 'EXPENSE',
-        method: 'CASH',
-        amount,
-        supplier: 'Доставчик',
-        doc_type: 'OTHER',
-        description: desc
-      });
-      telegramSend_(chatId, 'Разход записан');
-    }else if((m = text.match(/^\/spravka\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})/i))){
-      const [, from, to] = m;
-      const res = getReportV2({dateFrom: from, dateTo: to});
-      const k = res.kpi;
-      telegramSend_(chatId, `Приход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
-    }else{
-      telegramSend_(chatId, 'Непозната команда');
+      google.script.run.withSuccessHandler(()=>{
+        byId('tx_amount').value=''; byId('tx_desc').value='';
+        refreshAll();
+        btn.disabled = false;
+      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
     }
-  }catch(err){
-    telegramSend_(chatId, 'Грешка: ' + err.message);
-  }
-  return ContentService.createTextOutput('ok');
-}
 
-function telegramSend_(chatId, text){
-  if(!TG_API) return;
-  UrlFetchApp.fetch(`${TG_API}/sendMessage`, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify({ chat_id: chatId, text })
-  });
-}
+    function saveCount(){
+      const counts = {};
+      document.querySelectorAll('[data-denom]').forEach(b=>{
+        counts[b.dataset.denom] = Number(b.value||0);
+      });
+      const payload = { date: byId('date').value, store: byId('store').value, counts };
+      google.script.run.withSuccessHandler(res=>{
+        byId('declared').textContent = money(res.total);
+        alert('Броенето е записано.');
+      }).withFailureHandler(err=> alert(err.message||err)).saveCashCount(payload);
+    }
 
+    function closeDay(){
+      const declared = Number(byId('declared').textContent.replace(',','.'))||0;
+      const payload = {
+        date: byId('date').value,
+        store: byId('store').value,
+        declaredCash: declared,
+        note: byId('close_note').value
+      };
+      google.script.run.withSuccessHandler(res=>{
+        const diffCls = res.diff === 0 ? 'ok' : 'bad';
+        byId('close_result').innerHTML = `
+          <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
+          <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
+          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>
+        `;
+        refreshAll();
+      }).withFailureHandler(err=> alert(err.message||err)).closeDay(payload);
+    }
+
+    function refreshAll(){
+      const d = byId('date').value;
+      const s = byId('store').value;
+      google.script.run.withSuccessHandler(drawSummary).getDailySummary(d, s);
+      refreshTx();
+    }
+
+    function refreshTx(){
+      const df = byId('tx_from').value || byId('date').value;
+      const dt = byId('tx_to').value || byId('date').value;
+      const s = byId('store').value;
+      const q = {dateFrom: df, dateTo: dt, store: s, limit: 200};
+      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>{ alert(e.message||e); drawTx([]); }).listTransactions(q);
+    }
+
+    function drawSummary(s){
+      if(!s){ byId('summary').innerHTML=''; byId('summary_note').textContent=''; return;}
+      const el = byId('summary');
+      const parts = [
+        {label:'Продажби – Каса', v: s.sales.CASH||0},
+        {label:'Продажби – Карта', v: s.sales.CARD||0},
+        {label:'Продажби – Банка', v: s.sales.BANK||0},
+        {label:'Разходи – Каса', v: s.expenses.CASH||0},
+        {label:'Разходи – Карта', v: s.expenses.CARD||0},
+        {label:'Разходи – Банка', v: s.expenses.BANK||0},
+      ];
+      el.innerHTML = parts.map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span> <span class="v">${money(p.v)} лв</span></div></div>`).join('');
+      byId('summary_note').textContent = `Очаквани пари в каса: ${money(s.expectedCash)} лв`;
+    }
+
+    function drawTx(rows){
+      const list = Array.isArray(rows) ? rows : [];
+      const tb = byId('tx_rows');
+      tb.innerHTML = list.map(r=>`<tr>
+        <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : ''}</td>
+        <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
+        <td>${r.method||''}</td>
+        <td>${r.category||''}</td>
+        <td>${r.supplier||''}</td>
+        <td>${r.doc_type ? (DOC_LABEL[r.doc_type]||r.doc_type) : ''}</td>
+        <td>${r.doc_number||''}</td>
+        <td>${r.doc_date||''}</td>
+        <td>${r.description||''}</td>
+        <td>${money(r.amount)}</td>
+        <td class="muted">${r.user||''}</td>
+      </tr>`).join('');
+    }
+
+    function generateReport(){
+      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
+      google.script.run.withSuccessHandler(drawReport).withFailureHandler(err=>alert(err.message||err)).getReportV2(q);
+    }
+
+    function exportReport(){
+      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
+      google.script.run.withSuccessHandler(blob=>{
+        const url = 'data:text/csv;charset=utf-8,' + encodeURIComponent(blob.getDataAsString());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.getName();
+        document.body.appendChild(a); a.click(); a.remove();
+      }).withFailureHandler(err=>alert(err.message||err)).exportReportCsvV2(q);
+    }
+
+    function drawReport(r){
+      const kpiEl = byId('rep_kpi');
+      const tblM = byId('rep_tbl_method');
+      const tblCI = byId('rep_tbl_cat_income');
+      const tblCE = byId('rep_tbl_cat_expense');
+      const tblDoc = byId('rep_tbl_doc');
+      const tblSup = byId('rep_tbl_suppliers');
+      const tblClose = byId('rep_tbl_closings');
+      const recent = byId('rep_recent_rows');
+
+      if(!r){
+        kpiEl.innerHTML = tblM.innerHTML = tblCI.innerHTML = tblCE.innerHTML = tblDoc.innerHTML = tblSup.innerHTML = tblClose.innerHTML = '';
+        recent.innerHTML = '';
+        alert('Няма данни за справка');
+        return;
+      }
+
+      const k = r.kpi || {income_total:0,expense_total:0,net:0,tx_count:0};
+      kpiEl.innerHTML = [
+        {label:'Общ приход',v:k.income_total},
+        {label:'Общ разход',v:k.expense_total},
+        {label:'Нето',v:k.net},
+        {label:'Брой операции',v:k.tx_count}
+      ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
+
+      const methods = (r.byMethod||[]).map(m=>`<tr><td>${m.method}</td><td>${money(m.income)}</td><td>${money(m.expense)}</td></tr>`).join('');
+      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' + methods;
+
+      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
+        (r.byCatIncome||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+
+      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
+        (r.byCatExpense||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+
+      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' +
+        (r.expenseByDocType||[]).map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+
+      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' +
+        (r.suppliersTop||[]).map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+
+      tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
+        (r.closings||[]).map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
+
+      recent.innerHTML = (r.recentTx||[]).map(t=>`<tr>
+        <td>${t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : ''}</td>
+        <td>${t.date||''}</td>
+        <td>${t.store||''}</td>
+        <td>${t.type||''}</td>
+        <td>${t.method||''}</td>
+        <td>${t.category||''}</td>
+        <td>${t.supplier||''}</td>
+        <td>${t.doc_type ? (DOC_LABEL[t.doc_type]||t.doc_type) : ''}</td>
+        <td>${t.doc_number||''}</td>
+        <td>${t.doc_date||''}</td>
+        <td>${t.description||''}</td>
+        <td>${money(t.amount)}</td>
+        <td class="muted">${t.user||''}</td>
+      </tr>`).join('');
+    }
+
+    // boot
+    google.script.run.withSuccessHandler(fillMeta).getMeta();
+    byId('tx_type').addEventListener('change', onTypeChange);
+  </script>
+</body>
+</html>
