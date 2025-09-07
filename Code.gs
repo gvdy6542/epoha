@@ -18,6 +18,7 @@ const DOC_TYPES = [
 ];
 
 let TX_COLS = {}; // map колона->индекс за Transactions
+const SP = PropertiesService.getScriptProperties();
 
 /** ===================== WEB APP & MENU ===================== **/
 function onOpen(){
@@ -566,20 +567,20 @@ function round2_(n){
  *   /spravka YYYY-MM-DD YYYY-MM-DD
  * Деплой като Web App (Anyone). Запиши WEBAPP_URL в Script Properties. Пусни setWebhook_TG().
  * =========================================================== */
-const TG_TOKEN = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE'; // ← смени с нов токен от BotFather
-const TG_API = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
+const TG_TOKEN = SP.getProperty('TG_TOKEN') || '';
+const TG_API   = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 
 const TG_STATE_PREFIX = 'TG_STATE_';
 
 function getChatState_(id){
-  const v = PropertiesService.getScriptProperties().getProperty(TG_STATE_PREFIX+id);
+  const v = SP.getProperty(TG_STATE_PREFIX+id);
   return v ? JSON.parse(v) : null;
 }
 function setChatState_(id, state){
-  PropertiesService.getScriptProperties().setProperty(TG_STATE_PREFIX+id, JSON.stringify(state));
+  SP.setProperty(TG_STATE_PREFIX+id, JSON.stringify(state));
 }
 function clearChatState_(id){
-  PropertiesService.getScriptProperties().deleteProperty(TG_STATE_PREFIX+id);
+  SP.deleteProperty(TG_STATE_PREFIX+id);
 }
 
 function doPost(e){
@@ -606,11 +607,11 @@ function doPost(e){
     }
 
     // Ограничение по чатове (по желание) – property TG_ALLOWED = CSV от chat_id
-    const allowed = (PropertiesService.getScriptProperties().getProperty('TG_ALLOWED') || '')
+    const allowed = (SP.getProperty('TG_ALLOWED') || '')
       .split(',').map(s=>s.trim()).filter(Boolean);
     if (allowed.length && !allowed.includes(chatId)) {
       telegramSend_(chatId, `Нямате права за достъп. Дайте този ID на администратор: ${chatId}`);
-      const admins = (PropertiesService.getScriptProperties().getProperty('TG_ADMINS') || '')
+      const admins = (SP.getProperty('TG_ADMINS') || '')
         .split(',').map(s=>s.trim()).filter(Boolean);
       admins.forEach(a => telegramSend_(a, `Chat ${chatId} поиска достъп.`));
       return ContentService.createTextOutput('ok');
@@ -865,19 +866,26 @@ function handleChatState_(chatId, state, text){
 
 function telegramSend_(chatId, text, opts){
   if(!TG_API) return;
+  if(String(SP.getProperty('TG_SILENT')||'') === '1') return;
   const payload = { chat_id: chatId, text };
   if(opts) Object.assign(payload, opts);
   UrlFetchApp.fetch(`${TG_API}/sendMessage`, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify(payload)
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
   });
 }
 
 function setWebhook_TG(){
-  const url = PropertiesService.getScriptProperties().getProperty('WEBAPP_URL');
-  if(!url) throw new Error('Липсва WEBAPP_URL в Script Properties. Запиши там реалния Web App URL от Deploy.');
-  const resp = UrlFetchApp.fetch(`${TG_API}/setWebhook`, {
+  const token = SP.getProperty('TG_TOKEN');
+  const url   = SP.getProperty('WEBAPP_URL');
+  if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
+  if(!url) throw new Error('Няма WEBAPP_URL в Script Properties');
+  if(!/https:\/\/script\.googleusercontent\.com\/macros\/.*/i.test(url)){
+    throw new Error('WEBAPP_URL трябва да е от домейн script.googleusercontent.com (без редирект).');
+  }
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
     method: 'post',
     payload: { url },
     muteHttpExceptions: true
@@ -885,18 +893,41 @@ function setWebhook_TG(){
   Logger.log(resp.getContentText());
 }
 
+function resetWebhook_TG(){
+  const token = SP.getProperty('TG_TOKEN');
+  const url   = SP.getProperty('WEBAPP_URL');
+  if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
+  if(!url) throw new Error('Няма WEBAPP_URL в Script Properties');
+  if(!/https:\/\/script\.googleusercontent\.com\/macros\/.*/i.test(url)){
+    throw new Error('WEBAPP_URL трябва да е от домейн script.googleusercontent.com (без редирект).');
+  }
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, {
+    method:'post',
+    payload:{ drop_pending_updates:true },
+    muteHttpExceptions:true
+  });
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method:'post',
+    payload:{ url },
+    muteHttpExceptions:true
+  });
+  Logger.log(resp.getContentText());
+}
+
 function getWebhookInfo_TG(){
-  const resp = UrlFetchApp.fetch(`${TG_API}/getWebhookInfo`, {muteHttpExceptions:true});
+  const token = SP.getProperty('TG_TOKEN');
+  if(!token) throw new Error('Сложи TG_TOKEN в Script Properties.');
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {muteHttpExceptions:true});
   Logger.log(resp.getContentText());
 }
 
 function setAllowedChats_TG(){
-  PropertiesService.getScriptProperties().setProperty('TG_ALLOWED', '1045317263');
+  SP.setProperty('TG_ALLOWED', '1045317263');
   Logger.log('TG_ALLOWED записан.');
 }
 
 function setAdmins_TG(){
-  PropertiesService.getScriptProperties().setProperty('TG_ADMINS', '1045317263,');
+  SP.setProperty('TG_ADMINS', '1045317263,');
   Logger.log('TG_ADMINS записан.');
 }
 // <<< TELEGRAM BOT <<<
