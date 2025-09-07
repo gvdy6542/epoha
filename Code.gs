@@ -570,6 +570,9 @@ const STATE_PREFIX = 'STATE_';
 function parseCsvProp_(key){
   return (SP.getProperty(key) || '').split(',').map(s=>s.trim()).filter(Boolean);
 }
+function setCsvProp_(key, arr){
+  SP.setProperty(key, (arr || []).join(','));
+}
 function isAdmin_(id){
   return parseCsvProp_('TG_ADMINS').includes(String(id));
 }
@@ -761,12 +764,12 @@ function handleMessage_(chatId,text){
   }else if((m=text.match(/^\/allow\s+(\-?\d+)/))){
     if(!isAdmin_(chatId)) return;
     const list=parseCsvProp_('TG_ALLOWED');
-    if(!list.includes(m[1])){list.push(m[1]);SP.setProperty('TG_ALLOWED',list.join(','));}
+    if(!list.includes(m[1])){list.push(m[1]);setCsvProp_('TG_ALLOWED',list);}
     tgSend_(chatId,'Добавен: '+m[1]);
   }else if((m=text.match(/^\/deny\s+(\-?\d+)/))){
     if(!isAdmin_(chatId)) return;
     const list=parseCsvProp_('TG_ALLOWED').filter(x=>x!==m[1]);
-    SP.setProperty('TG_ALLOWED',list.join(','));
+    setCsvProp_('TG_ALLOWED',list);
     tgSend_(chatId,'Премахнат: '+m[1]);
   }else if(text==='➖ Разход'){
     startExpenseWizard_(chatId);
@@ -803,27 +806,56 @@ function handleCallback_(chatId,data){
 }
 
 function doPost(e){
-  if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
-  const body=e?.postData?.contents||'{}';
-  const update=JSON.parse(body);
-  const updId=Number(update.update_id);
-  const last=Number(SP.getProperty('TG_LAST_UPDATE')||0);
-  if(updId<=last) return ContentService.createTextOutput('ok');
-  SP.setProperty('TG_LAST_UPDATE',String(updId));
-  const msg=update.message||update.callback_query?.message;
-  if(!msg) return ContentService.createTextOutput('ok');
-  const chatId=String(msg.chat.id);
-  const now=Date.now();
-  const msgTs=(msg.date||0)*1000;
-  if(now-msgTs>5*60*1000) return ContentService.createTextOutput('ok');
-  const text=update.message?.text||'';
-  const data=update.callback_query?.data||'';
-  if(update.callback_query) answerCallback_(update.callback_query.id);
-  if(text.startsWith('/whoami')){tgSend_(chatId,`Вашият chat_id е ${chatId}`);return ContentService.createTextOutput('ok');}
-  if(!isAllowed_(chatId)){notifyBlocked_(chatId);tgSend_(chatId,'Нямате права за достъп. Дайте този ID на администратор: '+chatId);return ContentService.createTextOutput('ok');}
-  if(!isAdmin_(chatId) && !rateLimitOk_(chatId)) return ContentService.createTextOutput('ok');
-  if(data){handleCallback_(chatId,data);} else {handleMessage_(chatId,text||'');}
-  return ContentService.createTextOutput('ok');
+  try{
+    if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
+    const body=e?.postData?.contents||'{}';
+    const update=JSON.parse(body);
+    const updId=Number(update.update_id);
+    const last=Number(SP.getProperty('TG_LAST_UPDATE')||0);
+    if(updId<=last) return ContentService.createTextOutput('ok');
+    const msg=update.message||update.callback_query?.message;
+    if(!msg){
+      SP.setProperty('TG_LAST_UPDATE',String(updId));
+      return ContentService.createTextOutput('ok');
+    }
+    const chatId=String(msg.chat.id);
+    const now=Date.now();
+    const msgTs=(msg.date||0)*1000;
+    if(now-msgTs>5*60*1000){
+      SP.setProperty('TG_LAST_UPDATE',String(updId));
+      return ContentService.createTextOutput('ok');
+    }
+    const text=update.message?.text||'';
+    const data=update.callback_query?.data||'';
+    if(update.callback_query) answerCallback_(update.callback_query.id);
+    if(text.startsWith('/whoami')){
+      tgSend_(chatId,`Вашият chat_id е ${chatId}`);
+      SP.setProperty('TG_LAST_UPDATE',String(updId));
+      return ContentService.createTextOutput('ok');
+    }
+    if(!isAllowed_(chatId)){
+      notifyBlocked_(chatId);
+      tgSend_(chatId,'Нямате права… ID: '+chatId);
+      SP.setProperty('TG_LAST_UPDATE',String(updId));
+      return ContentService.createTextOutput('ok');
+    }
+    if(!isAdmin_(chatId) && !rateLimitOk_(chatId)){
+      SP.setProperty('TG_LAST_UPDATE',String(updId));
+      return ContentService.createTextOutput('ok');
+    }
+    if(data){handleCallback_(chatId,data);} else {handleMessage_(chatId,text||'');}
+    SP.setProperty('TG_LAST_UPDATE',String(updId));
+    return ContentService.createTextOutput('ok');
+  }catch(err){
+    Logger.log(err);
+    try{
+      const body=e?.postData?.contents||'{}';
+      const upd=JSON.parse(body);
+      const msg=upd.message||upd.callback_query?.message;
+      if(msg) tgSend_(String(msg.chat.id),'Грешка: '+err.message);
+    }catch(_){ }
+    return ContentService.createTextOutput('ok');
+  }
 }
 
 /** ========= WEBHOOK UTILITIES ========= **/
@@ -832,7 +864,6 @@ function setWebhook_TG(){
   const url=SP.getProperty('WEBAPP_URL');
   if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
   if(!url) throw new Error('Няма WEBAPP_URL в Script Properties');
-  if(!/^https:\/\/([a-z0-9-]+\.)*script\.googleusercontent\.com\//i.test(url)) throw new Error('WEBAPP_URL трябва да е от домейн script.googleusercontent.com');
   UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{method:'post',payload:{drop_pending_updates:true},muteHttpExceptions:true});
   const resp=UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`,{method:'post',payload:{url},muteHttpExceptions:true});
   Logger.log(resp.getContentText());
@@ -856,15 +887,16 @@ function getWebhookInfo_TG(){
 function resolveAndSetWEBAPP_URL(){
   const SP = PropertiesService.getScriptProperties();
   let url = SP.getProperty('WEBAPP_URL');
-  if (!url) throw new Error('Първо сложи Web app URL (script.google.com/.../exec) в WEBAPP_URL');
+  if (!url) throw new Error('Първо сложи Web app URL в WEBAPP_URL');
 
   const resp = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true });
   const loc = resp.getAllHeaders()['Location'] || resp.getAllHeaders()['location'];
-  if (!loc || !/^https:\/\/script\.googleusercontent\.com\//i.test(loc)) {
-    throw new Error('Не намерих директен script.googleusercontent.com URL. Увери се, че Web app е с Access: Anyone.');
+  if (loc) {
+    SP.setProperty('WEBAPP_URL', loc);
+    Logger.log('WEBAPP_URL set to: ' + loc);
+  } else {
+    Logger.log('WEBAPP_URL unchanged (no redirect detected)');
   }
-  SP.setProperty('WEBAPP_URL', loc);
-  Logger.log('WEBAPP_URL set to: ' + loc);
 }
 
 // <<< TELEGRAM BOT <<<
