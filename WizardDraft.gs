@@ -437,12 +437,11 @@ function unsetWebhook_TG(){
 }
 function getWebhookInfo_TG(){
   const token = SP.getProperty('TG_TOKEN');
-  if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
-  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`,{muteHttpExceptions:true});
-  Logger.log(resp.getContentText());
-  return resp.getContentText();
+if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
+const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`,{muteHttpExceptions:true});
+Logger.log(resp.getContentText());
+return resp.getContentText();
 }
-=======
 /**
  * Telegram bot wizard draft extracted from user proposal.
  *
@@ -454,11 +453,6 @@ function getWebhookInfo_TG(){
  */
 
 // === CONFIG ===
-const SP = PropertiesService.getScriptProperties();
-const TG_TOKEN = SP.getProperty('TG_TOKEN') || '';
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
-const STATE_PREFIX = 'STATE_';
-
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 const SH_TX = 'Transactions';
 const SH_SUP = 'Suppliers';
