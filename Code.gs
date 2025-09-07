@@ -18,6 +18,8 @@ const DOC_TYPES = [
 ];
 
 let TX_COLS = {}; // map колона->индекс за Transactions
+
+// Глобален достъп до Script Properties
 const SP = PropertiesService.getScriptProperties();
 
 /** ===================== WEB APP & MENU ===================== **/
@@ -110,7 +112,7 @@ function addTransaction(payload){
   let supplier = payload.supplier || '';
   let docType = payload.doc_type || '';
   let docNumber = payload.doc_number || '';
-  let docDate = payload.doc_date ? toDateOnly_(payload.doc_date) : null;
+  let docDate = payload.doc_date ? toDateOnly_(payload.doc_date) : '';
 
   if(type === 'EXPENSE'){
     supplier = String(supplier||'').trim();
@@ -120,7 +122,7 @@ function addTransaction(payload){
     if(['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(docType)){
       if(!docNumber) throw new Error('Липсва номер на документ');
     }
-    if(!docDate) docDate = toDateOnly_(new Date());
+    if(!docDate) throw new Error('Липсва дата на документа');
     if(docDate > toDateOnly_(new Date())) throw new Error('Дата на документа е в бъдещето');
     if(docType === 'CREDIT_NOTE') amount = -Math.abs(amount);
   }
@@ -395,6 +397,7 @@ function getReportV2(query){
     const h = shd.getRange(1,1,1,shd.getLastColumn()).getValues()[0];
     const idx = {}; h.forEach((v,i)=>idx[v]=i);
     const data = shd.getRange(2,1,lastd-1,shd.getLastColumn()).getValues();
+    const perDay = {};
     data.forEach(r=>{
       const d = r[idx.date];
       const st = r[idx.store];
@@ -558,24 +561,19 @@ function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
 
-/** ===========================================================
-
 /** ===================== TELEGRAM BOT ===================== **/
-const TG_TOKEN = SP.getProperty('TG_TOKEN') || '';
-const TG_API   = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
-const WEBAPP_URL = SP.getProperty('WEBAPP_URL') || '';
+/** ===================== TELEGRAM BOT ===================== **/
+// Използва глобалния SP отгоре в файла: const SP = PropertiesService.getScriptProperties();
 
+const TG_TOKEN = (SP.getProperty('TG_TOKEN') || '').trim();
+const TG_API   = TG_TOKEN ? `https://api.telegram.org/bot${TG_TOKEN}` : '';
 const STATE_PREFIX = 'STATE_';
 
+/** --- Helpers --- **/
 function parseCsvProp_(key){
   return (SP.getProperty(key) || '').split(',').map(s=>s.trim()).filter(Boolean);
 }
-function setCsvProp_(key, arr){
-  SP.setProperty(key, (arr || []).join(','));
-}
-function isAdmin_(id){
-  return parseCsvProp_('TG_ADMINS').includes(String(id));
-}
+function isAdmin_(id){ return parseCsvProp_('TG_ADMINS').includes(String(id)); }
 function isAllowed_(id){
   const allowed = parseCsvProp_('TG_ALLOWED');
   if(!allowed.length) return isAdmin_(id);
@@ -588,6 +586,44 @@ function rateLimitOk_(id){
   cache.put(key,'1',20);
   return true;
 }
+function getState_(id){ const v = SP.getProperty(STATE_PREFIX+id); return v?JSON.parse(v):null; }
+function setState_(id,st){ SP.setProperty(STATE_PREFIX+id,JSON.stringify(st)); }
+function clearState_(id){ SP.deleteProperty(STATE_PREFIX+id); }
+
+/** sendMessage – ПРАВИЛНО: reply_markup се подава като ОБЕКТ, не като низ */
+function tgSend_(chatId,text,opts){
+  if(!TG_API) return;
+  if(String(SP.getProperty('TG_SILENT')||'')==='1') return;
+
+  const payload = { chat_id: String(chatId), text: String(text) };
+
+  if (opts) {
+    if (opts.reply_markup) payload.reply_markup = opts.reply_markup; // важно: без stringify!
+    Object.keys(opts).forEach(k=>{ if(k!=='reply_markup') payload[k] = opts[k]; });
+  }
+
+  try {
+    const resp = UrlFetchApp.fetch(`${TG_API}/sendMessage`,{
+      method:'post',
+      contentType:'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions:true
+    });
+    Logger.log("tgSend payload: " + JSON.stringify(payload));
+    Logger.log("tgSend resp: " + resp.getContentText());
+  } catch (err) {
+    Logger.log("tgSend ERROR: " + err);
+  }
+}
+
+function answerCallback_(id){
+  if(!TG_API) return;
+  UrlFetchApp.fetch(`${TG_API}/answerCallbackQuery`,{
+    method:'post',
+    payload:{callback_query_id:id},
+    muteHttpExceptions:true
+  });
+}
 function notifyBlocked_(chatId){
   const admins = parseCsvProp_('TG_ADMINS');
   if(!admins.length) return;
@@ -597,38 +633,6 @@ function notifyBlocked_(chatId){
   SP.setProperty(key,String(Date.now()));
   admins.forEach(a=>tgSend_(a,`Chat ${chatId} опита достъп.`));
 }
-
-function getState_(id){
-  const v = SP.getProperty(STATE_PREFIX+id);
-  return v?JSON.parse(v):null;
-}
-function setState_(id,st){
-  SP.setProperty(STATE_PREFIX+id,JSON.stringify(st));
-}
-function clearState_(id){
-  SP.deleteProperty(STATE_PREFIX+id);
-}
-
-function tgSend_(chatId,text,opts){
-  if(!TG_API) return;
-  if(String(SP.getProperty('TG_SILENT')||'')==='1') return;
-  const payload={chat_id:chatId,text};
-  if(opts) Object.assign(payload,opts);
-  UrlFetchApp.fetch(`${TG_API}/sendMessage`,{
-    method:'post',
-    contentType:'application/json',
-    payload:JSON.stringify(payload),
-    muteHttpExceptions:true
-  });
-}
-function answerCallback_(id){
-  UrlFetchApp.fetch(`${TG_API}/answerCallbackQuery`,{
-    method:'post',
-    payload:{callback_query_id:id},
-    muteHttpExceptions:true
-  });
-}
-
 function startKeyboard_(){
   return {
     keyboard:[
@@ -639,24 +643,7 @@ function startKeyboard_(){
   };
 }
 
-function supplierKeyboard_(page){
-  const all = listSuppliers();
-  const PAGE = 6;
-  const p = page||0;
-  const start = p*PAGE;
-  const arr = all.sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase())).slice(start,start+PAGE);
-  const kb = arr.map(s=>[{text:s,callback_data:'sup:'+encodeURIComponent(s)}]);
-  if(all.length>PAGE){
-    const nav=[];
-    if(p>0) nav.push({text:'◀️',callback_data:'sup_page:'+(p-1)});
-    if(start+PAGE<all.length) nav.push({text:'▶️',callback_data:'sup_page:'+(p+1)});
-    if(nav.length) kb.push(nav);
-  }
-  kb.push([{text:'🆕 Нов доставчик',callback_data:'sup_new'}]);
-  kb.push([{text:'⬅️ Назад',callback_data:'wiz_back'},{text:'❌ Откажи',callback_data:'wiz_cancel'}]);
-  return {inline_keyboard:kb};
-}
-
+/** --- Общи списъци / клавиатури --- **/
 const DOC_TYPE_LABELS = [
   {code:'INVOICE',label:'Фактура'},
   {code:'CREDIT_NOTE',label:'Кредитно'},
@@ -672,231 +659,259 @@ const DOC_TYPE_LABELS = [
   {code:'OTHER',label:'Друг'}
 ];
 function docTypeKeyboard_(){
-  const kb=[];
-  for(let i=0;i<DOC_TYPE_LABELS.length;i+=3){
+  const kb=[]; for(let i=0;i<DOC_TYPE_LABELS.length;i+=3){
     kb.push(DOC_TYPE_LABELS.slice(i,i+3).map(d=>({text:d.label,callback_data:'doc:'+d.code})));
   }
-  kb.push([{text:'⬅️ Назад',callback_data:'wiz_back'},{text:'❌ Откажи',callback_data:'wiz_cancel'}]);
   return {inline_keyboard:kb};
 }
+function supplierKeyboard_(page){
+  const all = listSuppliers(); // изисква функцията от основния код
+  const PAGE = 6;
+  const p = Math.max(0, Number(page)||0);
+  const start = p*PAGE;
+  const arr = all.slice().sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase())).slice(start,start+PAGE);
+  const kb = arr.map(s=>[{text:s,callback_data:'sup:'+encodeURIComponent(s)}]);
+  if(all.length>PAGE){
+    const nav=[]; if(p>0) nav.push({text:'◀️',callback_data:'sup_page:'+(p-1)});
+    if(start+PAGE<all.length) nav.push({text:'▶️',callback_data:'sup_page:'+(p+1)});
+    if(nav.length) kb.push(nav);
+  }
+  kb.push([{text:'🆕 Нов доставчик',callback_data:'sup_new'}]);
+  return {inline_keyboard:kb};
+}
+function methodKeyboard_(){
+  return {inline_keyboard:[
+    [{text:'💵 Cash',callback_data:'method:CASH'}],
+    [{text:'💳 Card',callback_data:'method:CARD'}],
+    [{text:'🏦 Bank',callback_data:'method:BANK'}]
+  ]};
+}
 
-function askDocNumber_(chatId){
-  tgSend_(chatId,'Въведи № на документа:',{reply_markup:{inline_keyboard:[[ {text:'⬅️ Назад',callback_data:'wiz_start'},{text:'❌ Откажи',callback_data:'wiz_cancel'} ]]}});
-}
-function askSupplier_(chatId,state){
-  tgSend_(chatId,'Избери доставчик или напиши нов:',{reply_markup:supplierKeyboard_(state.page||0)});
-}
-function askAmount_(chatId){
-  tgSend_(chatId,'Въведи сума (напр. 12.34):',{reply_markup:{inline_keyboard:[[ {text:'⬅️ Назад',callback_data:'wiz_back'},{text:'❌ Откажи',callback_data:'wiz_cancel'} ]]}});
-}
-function askDocType_(chatId){
-  tgSend_(chatId,'Избери тип документ:',{reply_markup:docTypeKeyboard_()});
-}
-function askDocDate_(chatId){
-  tgSend_(chatId,'Въведи дата на документа (YYYY-MM-DD) или избери „Днес“:',{reply_markup:{inline_keyboard:[[{text:'📅 Днес',callback_data:'date_today'}],[{text:'⬅️ Назад',callback_data:'wiz_back'},{text:'❌ Откажи',callback_data:'wiz_cancel'}]]}});
-}
-function showConfirm_(chatId,state){
-  const docLabel = DOC_TYPE_LABELS.find(d=>d.code===state.docType)?.label||state.docType;
-  const docNum = state.docNumber || '—';
-  const txt = `Разход\n№: ${docNum}\nДоставчик: ${state.supplier}\nТип: ${docLabel}\nДата: ${state.docDate}\nСума: ${state.amount.toFixed(2)} лв`;
-  tgSend_(chatId,txt,{reply_markup:{inline_keyboard:[[ {text:'✅ Запиши',callback_data:'wiz_save'},{text:'⬅️ Редакция',callback_data:'wiz_edit'},{text:'❌ Откажи',callback_data:'wiz_cancel'} ]]}});
-}
-
+/** ===================== EXPENSE WIZARD ===================== **/
 function startExpenseWizard_(chatId){
-  const st={step:'docNumber'};
-  setState_(chatId,st);
-  askDocNumber_(chatId);
+  const st={step:'docType'}; setState_(chatId,st); askDocType_(chatId);
+}
+function askDocType_(chatId){ tgSend_(chatId,'Избери тип документ:',{reply_markup:docTypeKeyboard_()}); }
+function askDocNumberChoice_(chatId){
+  tgSend_(chatId,'Избери опция за номер:',{reply_markup:{inline_keyboard:[
+    [{text:'Без номер',callback_data:'docnum:none'}],
+    [{text:'Въведи номер',callback_data:'docnum:custom'}]
+  ]}});
+}
+function askSupplier_(chatId,state){ tgSend_(chatId,'Избери доставчик:',{reply_markup:supplierKeyboard_(state.page||0)}); }
+function askAmountChoice_(chatId){
+  const amounts=[5,10,20,50,100];
+  const rows = amounts.map(v=>[{text:`${v} лв`,callback_data:`amount:${v}`}]);
+  rows.push([{text:'Въведи друга',callback_data:'amount:custom'}]);
+  tgSend_(chatId,'Избери сума:',{reply_markup:{inline_keyboard:rows}});
+}
+function askMethod_(chatId){ tgSend_(chatId,'Избери метод на плащане:',{reply_markup:methodKeyboard_()}); }
+function askDocDate_(chatId){
+  tgSend_(chatId,'Избери дата на документа:',{reply_markup:{inline_keyboard:[
+    [{text:'📅 Днес',callback_data:'date_today'}],
+    [{text:'📅 Въведи друга',callback_data:'date_custom'}]
+  ]}});
+}
+function showConfirmExpense_(chatId,state){
+  const docLabel = DOC_TYPE_LABELS.find(d=>d.code===state.docType)?.label||state.docType;
+  const txt = `Разход\n№: ${state.docNumber||'—'}\nДоставчик: ${state.supplier}\nТип: ${docLabel}\nМетод: ${state.method}\nДата: ${state.docDate}\nСума: ${Number(state.amount||0).toFixed(2)} лв`;
+  tgSend_(chatId,txt,{reply_markup:{inline_keyboard:[
+    [{text:'✅ Запиши',callback_data:'wiz_save_exp'}]
+  ]}});
 }
 
+/** ===================== INCOME WIZARD ===================== **/
+function startIncomeWizard_(chatId){
+  const st={step:'incomeCat'}; setState_(chatId,st); askIncomeCat_(chatId);
+}
+function askIncomeCat_(chatId){
+  const cats=getMeta().categories.INCOME||[]; // използва getMeta() от основния код
+  const kb = cats.map(c=>[{text:c,callback_data:'inc_cat:'+encodeURIComponent(c)}]);
+  tgSend_(chatId,'Избери категория:',{reply_markup:{inline_keyboard:kb}});
+}
+function askIncomeAmountChoice_(chatId){
+  const amounts=[5,10,20,50,100];
+  const rows = amounts.map(v=>[{text:`${v} лв`,callback_data:`inc_amount:${v}`}]);
+  rows.push([{text:'Въведи друга',callback_data:'inc_amount:custom'}]);
+  tgSend_(chatId,'Избери сума:',{reply_markup:{inline_keyboard:rows}});
+}
+function askIncomeMethod_(chatId){ tgSend_(chatId,'Избери метод на плащане:',{reply_markup:methodKeyboard_()}); }
+function askIncomeDate_(chatId){
+  tgSend_(chatId,'Избери дата:',{reply_markup:{inline_keyboard:[
+    [{text:'📅 Днес',callback_data:'inc_date_today'}],
+    [{text:'📅 Въведи друга',callback_data:'inc_date_custom'}]
+  ]}});
+}
+function showConfirmIncome_(chatId,state){
+  const txt = `Приход\nКатегория: ${state.category}\nМетод: ${state.method}\nДата: ${state.date}\nСума: ${Number(state.amount||0).toFixed(2)} лв`;
+  tgSend_(chatId,txt,{reply_markup:{inline_keyboard:[
+    [{text:'✅ Запиши',callback_data:'wiz_save_inc'}]
+  ]}});
+}
+
+/** ===================== HANDLERS ===================== **/
 function handleMessage_(chatId,text){
   const state=getState_(chatId);
+
   if(state){
-    if(state.step==='docNumber'){
-      state.docNumber=text.trim();
-      state.step='supplier';
-      setState_(chatId,state);
-      askSupplier_(chatId,state);
-    }else if(state.step==='supplier'){
-      if(text.trim()){
-        try{addSupplier(text.trim());}catch(err){}
-        state.supplier=text.trim();
-        state.step='amount';
-        setState_(chatId,state);
-        askAmount_(chatId);
-      }
-    }else if(state.step==='amount'){
-      const num=Number(String(text).replace(',','.'));
-      if(isNaN(num)){tgSend_(chatId,'Невалидна сума. Опитай пак:');return;}
-      state.amount=Number(num.toFixed(2));
-      state.step='docType';
-      setState_(chatId,state);
-      askDocType_(chatId);
-    }else if(state.step==='docDate'){
-      let d=text.trim();
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){tgSend_(chatId,'Невалидна дата. Формат YYYY-MM-DD');return;}
-      if(toDateOnly_(d)>toDateOnly_(new Date())){tgSend_(chatId,'Дата в бъдещето.');return;}
-      state.docDate=d;
-      state.step='confirm';
-      setState_(chatId,state);
-      showConfirm_(chatId,state);
-    }
-    return;
+    if(state.step==='waitDocNum'){ state.docNumber=String(text||'').trim(); state.step='supplier'; setState_(chatId,state); askSupplier_(chatId,state); return; }
+    if(state.step==='waitAmount'){ const n=Number(String(text).replace(',','.')); if(isNaN(n)){tgSend_(chatId,'Невалидна сума');return;} state.amount=n; state.step='method'; setState_(chatId,state); askMethod_(chatId); return; }
+    if(state.step==='waitDocDate'){ state.docDate=String(text||'').trim(); state.step='confirmExp'; setState_(chatId,state); showConfirmExpense_(chatId,state); return; }
+    if(state.step==='waitIncAmount'){ const n=Number(String(text).replace(',','.')); if(isNaN(n)){tgSend_(chatId,'Невалидна сума');return;} state.amount=n; state.step='incMethod'; setState_(chatId,state); askIncomeMethod_(chatId); return; }
+    if(state.step==='waitIncDate'){ state.date=String(text||'').trim(); state.step='confirmInc'; setState_(chatId,state); showConfirmIncome_(chatId,state); return; }
   }
 
-  let m;
-  if((m=text.match(/^\/prihod\s+(\d+(?:[.,]\d+)?)\s+(.+)/i))){
-    const amount=Number(m[1].replace(',','.'));
-    const desc=m[2];
-    addTransaction({date:new Date().toISOString().slice(0,10),type:'INCOME',method:'CASH',amount,description:desc});
-    tgSend_(chatId,`Приход записан: ${amount.toFixed(2)} лв – ${desc}`);
-  }else if((m=text.match(/^\/razhod\s+(\d+(?:[.,]\d+)?)\s+(.+)/i))){
-    const amount=Number(m[1].replace(',','.'));
-    const desc=m[2];
-    addTransaction({date:new Date().toISOString().slice(0,10),type:'EXPENSE',method:'CASH',amount,description:desc,supplier:'Доставчик',doc_type:'OTHER',doc_date:new Date().toISOString().slice(0,10)});
-    tgSend_(chatId,`Разход записан: ${amount.toFixed(2)} лв – ${desc}`);
-  }else if((m=text.match(/^\/spravka\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})/i))){
-    const r=getReportV2({dateFrom:m[1],dateTo:m[2]});
-    const k=r?.kpi||{income_total:0,expense_total:0,net:0};
-    tgSend_(chatId,`Период ${m[1]} → ${m[2]}\nПриход: ${k.income_total} лв\nРазход: ${k.expense_total} лв\nНето: ${k.net} лв`);
-  }else if(text==='/allowed'){
-    if(!isAdmin_(chatId)) return;
-    tgSend_(chatId,'Allowed: '+parseCsvProp_('TG_ALLOWED').join(', '));
-  }else if((m=text.match(/^\/allow\s+(\-?\d+)/))){
-    if(!isAdmin_(chatId)) return;
-    const list=parseCsvProp_('TG_ALLOWED');
-    if(!list.includes(m[1])){list.push(m[1]);setCsvProp_('TG_ALLOWED',list);}
-    tgSend_(chatId,'Добавен: '+m[1]);
-  }else if((m=text.match(/^\/deny\s+(\-?\d+)/))){
-    if(!isAdmin_(chatId)) return;
-    const list=parseCsvProp_('TG_ALLOWED').filter(x=>x!==m[1]);
-    setCsvProp_('TG_ALLOWED',list);
-    tgSend_(chatId,'Премахнат: '+m[1]);
-  }else if(text==='➖ Разход'){
-    startExpenseWizard_(chatId);
-  }else if(text==='/start'){
-    clearState_(chatId);
-    tgSend_(chatId,'Изберете действие:',{reply_markup:startKeyboard_()});
-  }else if(text==='➕ Приход'){
-    tgSend_(chatId,'Използвай /prihod <сума> <описание>');
-  }else if(text==='📊 Справка'){
-    tgSend_(chatId,'Използвай /spravka YYYY-MM-DD YYYY-MM-DD');
-  }
+  if(text==='/start'){ clearState_(chatId); tgSend_(chatId,'Изберете действие:',{reply_markup:startKeyboard_()}); }
+  else if(text==='➖ Разход'){ startExpenseWizard_(chatId); }
+  else if(text==='➕ Приход'){ startIncomeWizard_(chatId); }
+  else if(text==='📊 Справка'){ tgSend_(chatId,'Използвай /spravka YYYY-MM-DD YYYY-MM-DD'); }
+  else if(text==='/whoami'){ tgSend_(chatId,`Вашият chat_id: ${chatId}`); }
 }
 
 function handleCallback_(chatId,data){
   const state=getState_(chatId)||{};
-  if(data==='wiz_cancel'){clearState_(chatId);tgSend_(chatId,'Отказано.');return;}
-  if(data==='wiz_start'){clearState_(chatId);tgSend_(chatId,'Изберете действие:',{reply_markup:startKeyboard_()});return;}
-  if(data==='wiz_back'){
-    if(state.step==='supplier'){state.step='docNumber';setState_(chatId,state);askDocNumber_(chatId);}
-    else if(state.step==='amount'){state.step='supplier';setState_(chatId,state);askSupplier_(chatId,state);}
-    else if(state.step==='docType'){state.step='amount';setState_(chatId,state);askAmount_(chatId);}
-    else if(state.step==='docDate'){state.step='docType';setState_(chatId,state);askDocType_(chatId);}
-    else if(state.step==='confirm'){state.step='docDate';setState_(chatId,state);askDocDate_(chatId);}
-    else{clearState_(chatId);tgSend_(chatId,'Изберете действие:',{reply_markup:startKeyboard_()});}
+
+  // Expense wizard
+  if(data.startsWith('doc:')){ state.docType=data.slice(4); state.step='docNumChoice'; setState_(chatId,state); askDocNumberChoice_(chatId); return; }
+  if(data==='docnum:none'){ state.docNumber=''; state.step='supplier'; setState_(chatId,state); askSupplier_(chatId,state); return; }
+  if(data==='docnum:custom'){ state.step='waitDocNum'; setState_(chatId,state); tgSend_(chatId,'Въведи номер на документ:'); return; }
+  if(data.startsWith('sup:')){ state.supplier=decodeURIComponent(data.slice(4)); state.step='amountChoice'; setState_(chatId,state); askAmountChoice_(chatId); return; }
+  if(data.startsWith('amount:')){ const v=data.split(':')[1]; if(v==='custom'){state.step='waitAmount';setState_(chatId,state);tgSend_(chatId,'Въведи сума:');return;} state.amount=+v; state.step='method'; setState_(chatId,state); askMethod_(chatId); return; }
+  if(data.startsWith('method:')){ state.method=data.split(':')[1]; state.step='docDate'; setState_(chatId,state); askDocDate_(chatId); return; }
+  if(data==='date_today'){ state.docDate=new Date().toISOString().slice(0,10); state.step='confirmExp'; setState_(chatId,state); showConfirmExpense_(chatId,state); return; }
+  if(data==='date_custom'){ state.step='waitDocDate'; setState_(chatId,state); tgSend_(chatId,'Въведи дата YYYY-MM-DD:'); return; }
+  if(data==='wiz_save_exp'){
+    try{
+      addTransaction({
+        date:new Date().toISOString().slice(0,10),
+        type:'EXPENSE',
+        method:state.method,
+        amount:state.amount,
+        supplier:state.supplier,
+        doc_type:state.docType,
+        doc_number:state.docNumber||'',
+        doc_date:state.docDate
+      });
+      tgSend_(chatId,'✅ Разход записан');
+    }catch(e){ tgSend_(chatId,'Грешка: '+(e.message||e)); }
+    clearState_(chatId); return;
+  }
+
+  // Income wizard
+  if(data.startsWith('inc_cat:')){ state.category=decodeURIComponent(data.slice(8)); state.step='incAmount'; setState_(chatId,state); askIncomeAmountChoice_(chatId); return; }
+  if(data.startsWith('inc_amount:')){ const v=data.split(':')[1]; if(v==='custom'){state.step='waitIncAmount';setState_(chatId,state);tgSend_(chatId,'Въведи сума:');return;} state.amount=+v; state.step='incMethod'; setState_(chatId,state); askIncomeMethod_(chatId); return; }
+  if(data.startsWith('method:')){
+    state.method=data.split(':')[1];
+    if(state.step==='incMethod'){ state.step='incDate'; setState_(chatId,state); askIncomeDate_(chatId); }
     return;
   }
-  if(data.startsWith('sup_page:')){state.page=Number(data.split(':')[1]);setState_(chatId,state);askSupplier_(chatId,state);return;}
-  if(data==='sup_new'){state.await='newSupplier';setState_(chatId,state);tgSend_(chatId,'Напиши име на доставчик:',{reply_markup:{inline_keyboard:[[ {text:'⬅️ Назад',callback_data:'wiz_back'},{text:'❌ Откажи',callback_data:'wiz_cancel'} ]]}});return;}
-  if(data.startsWith('sup:')){state.supplier=decodeURIComponent(data.slice(4));state.step='amount';delete state.page;setState_(chatId,state);askAmount_(chatId);return;}
-  if(data.startsWith('doc:')){state.docType=data.slice(4);if(['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(state.docType)&&!state.docNumber){tgSend_(chatId,'Този тип изисква № документ.');state.step='docNumber';setState_(chatId,state);askDocNumber_(chatId);return;}state.step='docDate';setState_(chatId,state);askDocDate_(chatId);return;}
-  if(data==='date_today'){state.docDate=new Date().toISOString().slice(0,10);state.step='confirm';setState_(chatId,state);showConfirm_(chatId,state);return;}
-  if(data==='wiz_save'){try{addTransaction({date:new Date().toISOString().slice(0,10),type:'EXPENSE',method:'CASH',amount:state.amount,supplier:state.supplier,doc_type:state.docType,doc_number:state.docNumber||'',doc_date:state.docDate,description:'Telegram wizard'});tgSend_(chatId,'Записано.');}catch(err){tgSend_(chatId,'Грешка: '+err.message);}clearState_(chatId);return;}
-  if(data==='wiz_edit'){state.step='docNumber';setState_(chatId,state);askDocNumber_(chatId);return;}
+  if(data==='inc_date_today'){ state.date=new Date().toISOString().slice(0,10); state.step='confirmInc'; setState_(chatId,state); showConfirmIncome_(chatId,state); return; }
+  if(data==='inc_date_custom'){ state.step='waitIncDate'; setState_(chatId,state); tgSend_(chatId,'Въведи дата YYYY-MM-DD:'); return; }
+  if(data==='wiz_save_inc'){
+    try{
+      addTransaction({
+        date:new Date().toISOString().slice(0,10),
+        type:'INCOME',
+        method:state.method,
+        amount:state.amount,
+        category:state.category
+      });
+      tgSend_(chatId,'✅ Приход записан');
+    }catch(e){ tgSend_(chatId,'Грешка: '+(e.message||e)); }
+    clearState_(chatId); return;
+  }
 }
 
-function doPost(e){
-  try{
-    if(!TG_TOKEN) return ContentService.createTextOutput('missing token');
-    const body=e?.postData?.contents||'{}';
-    const update=JSON.parse(body);
-    const updId=Number(update.update_id);
-    const last=Number(SP.getProperty('TG_LAST_UPDATE')||0);
-    if(updId<=last) return ContentService.createTextOutput('ok');
-    const msg=update.message||update.callback_query?.message;
-    if(!msg){
-      SP.setProperty('TG_LAST_UPDATE',String(updId));
-      return ContentService.createTextOutput('ok');
-    }
-    const chatId=String(msg.chat.id);
-    const now=Date.now();
-    const msgTs=(msg.date||0)*1000;
-    if(now-msgTs>5*60*1000){
-      SP.setProperty('TG_LAST_UPDATE',String(updId));
-      return ContentService.createTextOutput('ok');
-    }
-    const text=update.message?.text||'';
-    const data=update.callback_query?.data||'';
-    if(update.callback_query) answerCallback_(update.callback_query.id);
-    if(text.startsWith('/whoami')){
-      tgSend_(chatId,`Вашият chat_id е ${chatId}`);
-      SP.setProperty('TG_LAST_UPDATE',String(updId));
-      return ContentService.createTextOutput('ok');
-    }
-    if(!isAllowed_(chatId)){
-      notifyBlocked_(chatId);
-      tgSend_(chatId,'Нямате права… ID: '+chatId);
-      SP.setProperty('TG_LAST_UPDATE',String(updId));
-      return ContentService.createTextOutput('ok');
-    }
-    if(!isAdmin_(chatId) && !rateLimitOk_(chatId)){
-      SP.setProperty('TG_LAST_UPDATE',String(updId));
-      return ContentService.createTextOutput('ok');
-    }
-    if(data){handleCallback_(chatId,data);} else {handleMessage_(chatId,text||'');}
-    SP.setProperty('TG_LAST_UPDATE',String(updId));
+/** --- doPost --- **/
+function doPost(e) {
+  try {
+    Logger.log("RAW update: " + (e?.postData?.contents || 'no body'));
+
+    const token = SP.getProperty('TG_TOKEN');
+    if (!token) return ContentService.createTextOutput('missing token');
+
+    const update = JSON.parse(e?.postData?.contents || '{}');
+    const updId = Number(update.update_id || 0);
+    const last  = Number(SP.getProperty('TG_LAST_UPDATE') || 0);
+    if (updId && updId <= last) return ContentService.createTextOutput('ok');
+    if (updId) SP.setProperty('TG_LAST_UPDATE', String(updId));
+
+    const msg   = update.message || update.callback_query?.message;
+    if (!msg) return ContentService.createTextOutput('ok');
+
+    const chatId = String(msg.chat.id);
+    const text   = update.message?.text || '';
+    const data   = update.callback_query?.data || '';
+
+    if (update.callback_query) answerCallback_(update.callback_query.id);
+
+    if (text && /^\/whoami\b/i.test(text)) { tgSend_(chatId, `Вашият chat_id: ${chatId}`); return ContentService.createTextOutput('ok'); }
+    if (!isAllowed_(chatId)) { notifyBlocked_(chatId); tgSend_(chatId,'Нямате права за достъп. ID: '+chatId); return ContentService.createTextOutput('ok'); }
+    if (!isAdmin_(chatId) && !rateLimitOk_(chatId)) return ContentService.createTextOutput('ok');
+
+    if (data) handleCallback_(chatId,data); else handleMessage_(chatId,text||'');
     return ContentService.createTextOutput('ok');
-  }catch(err){
-    Logger.log(err);
-    try{
-      const body=e?.postData?.contents||'{}';
-      const upd=JSON.parse(body);
-      const msg=upd.message||upd.callback_query?.message;
-      if(msg) tgSend_(String(msg.chat.id),'Грешка: '+err.message);
-    }catch(_){ }
+  } catch (err) {
+    Logger.log('Error in doPost: ' + err);
     return ContentService.createTextOutput('ok');
   }
 }
 
-/** ========= WEBHOOK UTILITIES ========= **/
+/** ===== Helpers за CSV properties (админ команди ги ползват) ===== */
+function getCsvProp_(key){
+  return (PropertiesService.getScriptProperties().getProperty(key) || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+}
+function setCsvProp_(key, arr){
+  PropertiesService.getScriptProperties().setProperty(key, (arr||[]).join(','));
+}
+function addToCsvProp_(key, val){
+  const arr = getCsvProp_(key);
+  if (!arr.includes(String(val))) arr.push(String(val));
+  setCsvProp_(key, arr);
+}
+function removeFromCsvProp_(key, val){
+  const arr = getCsvProp_(key).filter(v => v !== String(val));
+  setCsvProp_(key, arr);
+}
+
+/** ========= WEBHOOK UTILITIES (работят с ОБИКНОВЕНИЯ script.google.com URL) ========= **/
 function setWebhook_TG(){
-  const token=SP.getProperty('TG_TOKEN');
-  const url=SP.getProperty('WEBAPP_URL');
+  const token = SP.getProperty('TG_TOKEN');
+  const url   = SP.getProperty('WEBAPP_URL'); // https://script.google.com/macros/s/.../exec
   if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
   if(!url) throw new Error('Няма WEBAPP_URL в Script Properties');
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{method:'post',payload:{drop_pending_updates:true},muteHttpExceptions:true});
-  const resp=UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`,{method:'post',payload:{url},muteHttpExceptions:true});
+
+  // чистим стария уебхук и pending updates
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{
+    method:'post',
+    payload:{ drop_pending_updates:true },
+    muteHttpExceptions:true
+  });
+
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`,{
+    method:'post',
+    payload:{ url },
+    muteHttpExceptions:true
+  });
   Logger.log(resp.getContentText());
   return resp.getContentText();
 }
 function unsetWebhook_TG(){
-  const token=SP.getProperty('TG_TOKEN');
+  const token = SP.getProperty('TG_TOKEN');
   if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
-  const resp=UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{method:'post',payload:{drop_pending_updates:true},muteHttpExceptions:true});
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{
+    method:'post',
+    payload:{ drop_pending_updates:true },
+    muteHttpExceptions:true
+  });
   Logger.log(resp.getContentText());
   return resp.getContentText();
 }
 function getWebhookInfo_TG(){
-  const token=SP.getProperty('TG_TOKEN');
+  const token = SP.getProperty('TG_TOKEN');
   if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
-  const resp=UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`,{muteHttpExceptions:true});
+  const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`,{muteHttpExceptions:true});
   Logger.log(resp.getContentText());
   return resp.getContentText();
 }
-
-function resolveAndSetWEBAPP_URL(){
-  const SP = PropertiesService.getScriptProperties();
-  let url = SP.getProperty('WEBAPP_URL');
-  if (!url) throw new Error('Първо сложи Web app URL в WEBAPP_URL');
-
-  const resp = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true });
-  const loc = resp.getAllHeaders()['Location'] || resp.getAllHeaders()['location'];
-  if (loc) {
-    SP.setProperty('WEBAPP_URL', loc);
-    Logger.log('WEBAPP_URL set to: ' + loc);
-  } else {
-    Logger.log('WEBAPP_URL unchanged (no redirect detected)');
-  }
-}
-
-// <<< TELEGRAM BOT <<<
