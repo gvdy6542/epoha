@@ -852,4 +852,19 @@ function getWebhookInfo_TG(){
   Logger.log(resp.getContentText());
   return resp.getContentText();
 }
+
+function resolveAndSetWEBAPP_URL(){
+  const SP = PropertiesService.getScriptProperties();
+  let url = SP.getProperty('WEBAPP_URL');
+  if (!url) throw new Error('Първо сложи Web app URL (script.google.com/.../exec) в WEBAPP_URL');
+
+  const resp = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true });
+  const loc = resp.getAllHeaders()['Location'] || resp.getAllHeaders()['location'];
+  if (!loc || !/^https:\/\/script\.googleusercontent\.com\//i.test(loc)) {
+    throw new Error('Не намерих директен script.googleusercontent.com URL. Увери се, че Web app е с Access: Anyone.');
+  }
+  SP.setProperty('WEBAPP_URL', loc);
+  Logger.log('WEBAPP_URL set to: ' + loc);
+}
+
 // <<< TELEGRAM BOT <<<
