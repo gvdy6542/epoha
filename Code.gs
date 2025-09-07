@@ -832,7 +832,7 @@ function setWebhook_TG(){
   const url=SP.getProperty('WEBAPP_URL');
   if(!token) throw new Error('Няма TG_TOKEN в Script Properties');
   if(!url) throw new Error('Няма WEBAPP_URL в Script Properties');
-  if(!/^https:\/\/script\.googleusercontent\.com\//i.test(url)) throw new Error('WEBAPP_URL трябва да е от домейн script.googleusercontent.com');
+  if(!/^https:\/\/([a-z0-9-]+\.)*script\.googleusercontent\.com\//i.test(url)) throw new Error('WEBAPP_URL трябва да е от домейн script.googleusercontent.com');
   UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook`,{method:'post',payload:{drop_pending_updates:true},muteHttpExceptions:true});
   const resp=UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`,{method:'post',payload:{url},muteHttpExceptions:true});
   Logger.log(resp.getContentText());
