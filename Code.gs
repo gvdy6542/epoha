@@ -559,3 +559,335 @@ function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
 
+/** ===================== VIBER BOT (plug-in към съществуващия бекенд) ===================== **/
+// !!! СМЕНИ ТОКЕНА !!!
+const VIBER_AUTH_TOKEN = 'PASTE_YOUR_TOKEN_HERE';
+const VIBER_API = 'https://chatapi.viber.com/pa';
+
+// Стъпки на уизарда
+const VBR_STEP = {
+  START:'START',
+  TYPE:'TYPE',
+  CATEGORY:'CATEGORY',
+  SUPPLIER:'SUPPLIER',
+  DOC_TYPE:'DOC_TYPE',
+  DOC_NUMBER:'DOC_NUMBER',
+  DOC_DATE:'DOC_DATE',
+  AMOUNT:'AMOUNT',
+  METHOD:'METHOD',
+  NOTE:'NOTE',
+  CONFIRM:'CONFIRM'
+};
+
+// Хелпъри за state в CacheService
+function vbrKey_(uid){ return 'VBR_STATE_'+uid; }
+function vbrGetState_(uid){
+  const c = CacheService.getUserCache();
+  const raw = c.get(vbrKey_(uid));
+  if (raw) { try { return JSON.parse(raw); } catch(e){} }
+  const init = { step: VBR_STEP.START };
+  vbrSetState_(uid, init);
+  return init;
+}
+function vbrSetState_(uid, patch){
+  const c = CacheService.getUserCache();
+  const cur = vbrGetState_(uid);
+  const next = Object.assign({}, cur, patch);
+  c.put(vbrKey_(uid), JSON.stringify(next), 21600); // 6 часа
+  return next;
+}
+function vbrReset_(uid){
+  const c = CacheService.getUserCache();
+  c.remove(vbrKey_(uid));
+  vbrSetState_(uid, { step: VBR_STEP.START });
+}
+
+// Клавиатури
+function vbrBtn_(text, value){
+  return {"Columns":6,"Rows":1,"BgColor":"#FFFFFF","ActionType":"reply","ActionBody":value,"Text":text};
+}
+function vbrMainKb_(){
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons":[
+    vbrBtn_('➖ Разход','/expense'),
+    vbrBtn_('➕ Приход','/income'),
+    vbrBtn_('📤 Reset','/reset'),
+    vbrBtn_('🧾 Logs','/logs')
+  ]};
+}
+function vbrTypeKb_(){
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons":[
+    vbrBtn_('➕ INCOME','INCOME'),
+    vbrBtn_('➖ EXPENSE','EXPENSE')
+  ]};
+}
+function vbrMethodsKb_(){
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons": DEFAULT_METHODS.map(m=>vbrBtn_(m,m)) };
+}
+function vbrDocTypesKb_(){
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons": DOC_TYPES.map(d=>vbrBtn_(d,d)) };
+}
+function vbrCategoriesKb_(type){
+  const cats = getMeta().categories[type] || [];
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons": cats.map(c=>vbrBtn_(c,c)) };
+}
+function vbrConfirmKb_(){
+  return {"Type":"keyboard","DefaultHeight":true,"Buttons":[
+    vbrBtn_('✅ Потвърди','✅ Потвърди'),
+    vbrBtn_('❌ Отмени','❌ Отмени')
+  ]};
+}
+
+// Viber API
+function vbrSend_(receiverId, text, keyboard){
+  const payload = { receiver: receiverId, min_api_version: 7, type: 'text', text: String(text) };
+  if (keyboard) payload.keyboard = keyboard;
+  const res = UrlFetchApp.fetch(VIBER_API + '/send_message', {
+    method:'post', contentType:'application/json',
+    payload: JSON.stringify(payload),
+    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN },
+    muteHttpExceptions:true
+  });
+  SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\nSEND '+res.getResponseCode()+': '+res.getContentText()).split('\n').slice(-200).join('\n'));
+}
+function setViberWebhook(){
+  const url = ScriptApp.getService().getUrl();
+  const payload = {
+    url,
+    event_types: ['conversation_started','message','subscribed','unsubscribed','delivered','seen','webhook'],
+    send_name:true, send_photo:false
+  };
+  const res = UrlFetchApp.fetch(VIBER_API + '/set_webhook', {
+    method:'post', contentType:'application/json',
+    payload: JSON.stringify(payload),
+    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN },
+    muteHttpExceptions:true
+  });
+  SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\nWEBHOOK '+res.getResponseCode()+': '+res.getContentText()).split('\n').slice(-200).join('\n'));
+}
+
+// Подпис: HMAC-SHA256(body, token) -> hex lower
+function vbrVerifySig_(body, signature){
+  try{
+    if (!signature) return false;
+    const raw = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_256, body, VIBER_AUTH_TOKEN);
+    const hex = raw.map(b => ('0'+(b & 0xFF).toString(16)).slice(-2)).join('');
+    return hex === String(signature).toLowerCase();
+  }catch(e){ return false; }
+}
+
+// Удобен лог
+function vbrLog_(){
+  const now = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss');
+  const line = now+' | '+[].slice.call(arguments).map(a=>{ try{return (typeof a==='string')?a:JSON.stringify(a);}catch(e){return String(a);} }).join(' | ');
+  SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\n'+line).split('\n').slice(-200).join('\n'));
+}
+function vbrGetLogs_(){ return (SP.getProperty('VBR_LOG')||'').split('\n').filter(Boolean).slice(-50).join('\n'); }
+
+// doPost – Viber webhook (добавяме към приложението)
+function doPost(e){
+  ensureSheets_(); // гарантираме таблиците
+
+  const body = e && e.postData && e.postData.contents ? e.postData.contents : '';
+  if (!body) return ContentService.createTextOutput('ok');
+
+  // Някои контейнерни среди не подават headers обект; защитаваме се
+  const sig = (e.postData.headers && (e.postData.headers['X-Viber-Content-Signature'] || e.postData.headers['x-viber-content-signature'])) || null;
+  if (!vbrVerifySig_(body, sig)) {
+    vbrLog_('INVALID_SIG');
+    return ContentService.createTextOutput('invalid signature');
+  }
+
+  const data = JSON.parse(body);
+  vbrLog_('IN', data.event);
+
+  switch (data.event) {
+    case 'webhook': return ContentService.createTextOutput('webhook ok');
+
+    case 'conversation_started': {
+      const uid = data.user && data.user.id;
+      if (uid){
+        vbrReset_(uid);
+        vbrSend_(uid, 'Здравей! Избери операция:', vbrMainKb_());
+      }
+      return ContentService.createTextOutput('ok');
+    }
+
+    case 'subscribed': {
+      const uid = data.user && data.user.id;
+      if (uid){
+        vbrReset_(uid);
+        vbrSend_(uid, 'Абонамент активен. Избери операция:', vbrMainKb_());
+      }
+      return ContentService.createTextOutput('ok');
+    }
+
+    case 'message': {
+      const uid = data.sender && data.sender.id;
+      const text = (data.message && data.message.text || '').trim();
+      if (!uid) return ContentService.createTextOutput('ok');
+
+      // системни команди
+      if (text.toLowerCase() === '/reset' || text === '📤 Reset'){
+        vbrReset_(uid);
+        vbrSend_(uid, 'Сесията е нулирана. Избери операция:', vbrMainKb_());
+        return ContentService.createTextOutput('ok');
+      }
+      if (text.toLowerCase() === '/logs' || text === '🧾 Logs'){
+        vbrSend_(uid, vbrGetLogs_() || 'Няма логове.');
+        return ContentService.createTextOutput('ok');
+      }
+
+      // уизард
+      vbrHandleWizard_(uid, text);
+      return ContentService.createTextOutput('ok');
+    }
+
+    default:
+      return ContentService.createTextOutput('ok');
+  }
+}
+
+// Уизард: пита точно полетата, които очаква твоя addTransaction()
+function vbrHandleWizard_(uid, text){
+  const st = vbrGetState_(uid);
+
+  // избор тип
+  if (st.step === VBR_STEP.START || st.step === VBR_STEP.TYPE){
+    let picked = null;
+    if (text.includes('➖') || text.toUpperCase()==='EXPENSE' || text.toLowerCase()==='/expense') picked = 'EXPENSE';
+    if (text.includes('➕') || text.toUpperCase()==='INCOME'  || text.toLowerCase()==='/income')  picked = 'INCOME';
+
+    if (!picked){
+      vbrSetState_(uid, { step: VBR_STEP.TYPE });
+      vbrSend_(uid, 'Избери тип:', vbrTypeKb_()); return;
+    }
+
+    vbrSetState_(uid, { type:picked, step: VBR_STEP.CATEGORY });
+    vbrSend_(uid, 'Избери категория:', vbrCategoriesKb_(picked)); return;
+  }
+
+  // категория
+  if (st.step === VBR_STEP.CATEGORY){
+    const cats = getMeta().categories[st.type] || [];
+    if (!cats.includes(text)){
+      vbrSend_(uid, 'Избери валидна категория:', vbrCategoriesKb_(st.type)); return;
+    }
+    if (st.type === 'EXPENSE'){
+      vbrSetState_(uid, { category:text, step: VBR_STEP.SUPPLIER });
+      vbrSend_(uid, 'Въведи доставчик (име):'); return;
+    } else {
+      vbrSetState_(uid, { category:text, step: VBR_STEP.AMOUNT });
+      vbrSend_(uid, 'Въведи сума (точка за десетични):'); return;
+    }
+  }
+
+  // доставчик
+  if (st.step === VBR_STEP.SUPPLIER){
+    const sup = String(text).trim();
+    if (!sup){ vbrSend_(uid,'Въведи доставчик:'); return; }
+    vbrSetState_(uid, { supplier:sup, step: VBR_STEP.DOC_TYPE });
+    vbrSend_(uid, 'Избери тип документ:', vbrDocTypesKb_()); return;
+  }
+
+  // тип документ
+  if (st.step === VBR_STEP.DOC_TYPE){
+    const d = String(text).toUpperCase();
+    if (!DOC_TYPES.includes(d)){ vbrSend_(uid,'Избери валиден тип документ:', vbrDocTypesKb_()); return; }
+    // за фактурни типове ще иска номер и дата
+    if (['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(d)){
+      vbrSetState_(uid, { doc_type:d, step: VBR_STEP.DOC_NUMBER });
+      vbrSend_(uid, 'Въведи номер на документ:'); return;
+    } else {
+      vbrSetState_(uid, { doc_type:d, doc_number:'', step: VBR_STEP.DOC_DATE });
+      vbrSend_(uid, 'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+    }
+  }
+
+  // номер документ
+  if (st.step === VBR_STEP.DOC_NUMBER){
+    const num = String(text).trim();
+    if (!num){ vbrSend_(uid, 'Въведи номер на документ:'); return; }
+    vbrSetState_(uid, { doc_number:num, step: VBR_STEP.DOC_DATE });
+    vbrSend_(uid, 'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+  }
+
+  // дата документ
+  if (st.step === VBR_STEP.DOC_DATE){
+    const dd = String(text).trim();
+    // 1:1 към твоя формат – валидираме в addTransaction; тук само събираме
+    vbrSetState_(uid, { doc_date:dd, step: VBR_STEP.AMOUNT });
+    vbrSend_(uid, 'Въведи сума (точка за десетични):'); return;
+  }
+
+  // сума
+  if (st.step === VBR_STEP.AMOUNT){
+    const a = parseFloat(String(text).replace(',','.'));
+    if (!(a>0)){ vbrSend_(uid,'Невалидна сума. Опитай пак:'); return; }
+    vbrSetState_(uid, { amount:a, step: VBR_STEP.METHOD });
+    vbrSend_(uid, 'Метод на плащане:', vbrMethodsKb_()); return;
+  }
+
+  // метод
+  if (st.step === VBR_STEP.METHOD){
+    const m = String(text).toUpperCase();
+    if (!DEFAULT_METHODS.includes(m)){ vbrSend_(uid,'Избери валиден метод:', vbrMethodsKb_()); return; }
+    vbrSetState_(uid, { method:m, step: VBR_STEP.NOTE });
+    vbrSend_(uid, 'Бележка (по избор) – напиши текст или „-”:'); return;
+  }
+
+  // бележка
+  if (st.step === VBR_STEP.NOTE){
+    const note = (text === '-' ? '' : String(text));
+    vbrSetState_(uid, { note, step: VBR_STEP.CONFIRM });
+    const s = vbrGetState_(uid);
+    const review = [
+      `Тип: ${s.type}`,
+      `Категория: ${s.category||''}`,
+      `Доставчик: ${s.supplier||''}`,
+      `Документ: ${s.doc_type||''} №${s.doc_number||''} ${s.doc_date?('('+s.doc_date+')'):''}`,
+      `Сума: ${s.amount}`,
+      `Метод: ${s.method}`,
+      `Описание: ${note||''}`
+    ].join('\n');
+    vbrSend_(uid, 'Провери и потвърди:\n\n'+review, vbrConfirmKb_()); return;
+  }
+
+  // потвърждение
+  if (st.step === VBR_STEP.CONFIRM){
+    if (text === '✅ Потвърди'){
+      try{
+        // Сглобяваме payload за твоя addTransaction()
+        const s = vbrGetState_(uid);
+        const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+        const payload = {
+          date: today,
+          type: s.type,
+          method: s.method,
+          category: s.category || '',
+          description: s.note || '',
+          amount: s.amount,
+          supplier: s.type==='EXPENSE' ? s.supplier : '',
+          doc_type: s.type==='EXPENSE' ? (s.doc_type||'') : '',
+          doc_number: s.type==='EXPENSE' ? (s.doc_number||'') : '',
+          doc_date: s.type==='EXPENSE' ? (s.doc_date||'') : ''
+        };
+        addTransaction(payload); // използваме твоя валидатор и запис
+        if (payload.supplier) { try{ addSupplier(payload.supplier); }catch(e){} }
+        vbrSend_(uid, '✅ Записано. Можеш да започнеш нова операция.', vbrMainKb_());
+        vbrReset_(uid);
+      }catch(err){
+        vbrSend_(uid, '❌ Грешка: '+err.message);
+      }
+      return;
+    }
+    if (text === '❌ Отмени'){
+      vbrReset_(uid);
+      vbrSend_(uid, '❌ Отменено. Започни наново.', vbrMainKb_()); return;
+    }
+    vbrSend_(uid, 'Натисни „✅ Потвърди“ или „❌ Отмени“.', vbrConfirmKb_()); return;
+  }
+
+  // fallback
+  vbrSetState_(uid, { step: VBR_STEP.TYPE });
+  vbrSend_(uid, 'Избери операция:', vbrTypeKb_());
+}
