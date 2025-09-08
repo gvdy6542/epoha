@@ -1,4 +1,4 @@
-/** ===================== CONFIG ===================== **/
+//** ===================== CONFIG ===================== **/
 const TZ      = 'Europe/Sofia';
 const SS_ID   = SpreadsheetApp.getActive().getId();
 
