@@ -1,13 +1,15 @@
-//** ===================== CONFIG ===================== **/
+/**************************************************
+ * CONFIG
+ **************************************************/
 const TZ      = 'Europe/Sofia';
 const SS_ID   = SpreadsheetApp.getActive().getId();
 
-const SH_TX   = 'Transactions';     // Операции (приход/разход)
-const SH_CNT  = 'CashCounts';       // Броене на каса по деноминации
-const SH_DAY  = 'DayClosings';      // Дневни отчети / приключване
-const SH_SET  = 'Settings';         // Настройки (по избор)
-const SH_USERS= 'Users';            // Потребители (по избор)
-const SH_SUP  = 'Suppliers';        // Доставчици
+const SH_TX   = 'Transactions';
+const SH_CNT  = 'CashCounts';
+const SH_DAY  = 'DayClosings';
+const SH_SET  = 'Settings';
+const SH_USERS= 'Users';
+const SH_SUP  = 'Suppliers';
 
 const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
 const DEFAULT_METHODS = ['CASH','CARD','BANK'];
@@ -18,18 +20,17 @@ const DOC_TYPES = [
 ];
 
 let TX_COLS = {}; // map колона->индекс за Transactions
-
-// Глобален достъп до Script Properties
 const SP = PropertiesService.getScriptProperties();
 
-/** ===================== WEB APP & MENU ===================== **/
+/**************************************************
+ * WEB APP & MENU
+ **************************************************/
 function onOpen(){
   SpreadsheetApp.getUi()
     .createMenu('Отчитане')
     .addItem('Отвори приложението', 'showWebApp_')
     .addToUi();
 }
-
 function showWebApp_(){
   const html = HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Отчитане на магазин')
@@ -38,7 +39,6 @@ function showWebApp_(){
     .setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
 }
-
 function doGet(){
   ensureSheets_();
   return HtmlService.createHtmlOutputFromFile('Index')
@@ -46,7 +46,9 @@ function doGet(){
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/** ===================== PUBLIC API ===================== **/
+/**************************************************
+ * PUBLIC API
+ **************************************************/
 function getMeta(){
   ensureSheets_();
   return {
@@ -60,7 +62,6 @@ function getMeta(){
     }
   };
 }
-
 function listSuppliers(){
   ensureSheets_();
   const sh = getSheet_(SH_SUP);
@@ -70,7 +71,6 @@ function listSuppliers(){
   arr.sort((a,b)=> a.toLowerCase().localeCompare(b.toLowerCase()));
   return arr;
 }
-
 function addSupplier(name){
   ensureSheets_();
   let n = String(name||'').trim().replace(/\s+/g,' ');
@@ -83,7 +83,6 @@ function addSupplier(name){
   sh.appendRow([n, new Date(), user]);
   return {ok:true};
 }
-
 /**
  * payload: {date, type, method, category, description, amount,
  *           supplier?, doc_type?, doc_number?, doc_date?}
@@ -146,7 +145,6 @@ function addTransaction(payload){
   sh.appendRow(row);
   return {ok:true};
 }
-
 function listTransactions(query){
   ensureSheets_();
   const sh = getSheet_(SH_TX);
@@ -156,7 +154,6 @@ function listTransactions(query){
   const cols = TX_COLS;
 
   const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
-
   const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
   const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
 
@@ -186,9 +183,7 @@ function listTransactions(query){
     user: cols.user!==undefined ? r[cols.user] : ''
   }));
 }
-
 function saveCashCount(payload){
-  // payload: {date, store, counts: {denom: qty}}
   ensureSheets_();
   const meta = getMeta();
   const sh = getSheet_(SH_CNT);
@@ -205,16 +200,10 @@ function saveCashCount(payload){
   });
 
   sh.appendRow([
-    new Date(),          // timestamp
-    dateOnly,
-    store,
-    ...qtys,
-    round2_(total),
-    user
+    new Date(), dateOnly, store, ...qtys, round2_(total), user
   ]);
   return {ok:true, total: round2_(total)};
 }
-
 function getDailySummary(date){
   ensureSheets_();
   const dateOnly = toDateOnly_(date);
@@ -236,9 +225,7 @@ function getDailySummary(date){
   const expectedCash = round2_( (sum.sales.CASH||0) - (sum.expenses.CASH||0) );
   return {date: dateOnly, store: 'Основен', ...sum, expectedCash};
 }
-
 function closeDay(payload){
-  // payload: {date, store, declaredCash, note}
   ensureSheets_();
   const dateOnly = toDateOnly_(payload.date);
   const store = payload.store || 'Основен';
@@ -252,235 +239,22 @@ function closeDay(payload){
 
   const sh = getSheet_(SH_DAY);
   sh.appendRow([
-    new Date(),
-    dateOnly,
-    store,
-    round2_(s.sales.CASH||0),
-    round2_(s.sales.CARD||0),
-    round2_(s.sales.BANK||0),
-    round2_(s.expenses.CASH||0),
-    round2_(s.expenses.CARD||0),
-    round2_(s.expenses.BANK||0),
-    declared,
-    expectedCash,
-    diff,
-    note,
-    user
+    new Date(), dateOnly, store,
+    round2_(s.sales.CASH||0), round2_(s.sales.CARD||0), round2_(s.sales.BANK||0),
+    round2_(s.expenses.CASH||0), round2_(s.expenses.CARD||0), round2_(s.expenses.BANK||0),
+    declared, expectedCash, diff, note, user
   ]);
 
   return {ok:true, expectedCash, declared, diff};
 }
 
-/** ===================== REPORT V2 (без PIN) ===================== **/
-function getReportV2(query){
-  ensureSheets_();
-
-  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
-  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
-  const store = (query?.store || '').trim() || '';
-
-  const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
-  const round2 = n => Math.round(n*100)/100;
-
-  const res = {
-    range:{from: df||'', to: dt||'', store: store||'Всички'},
-    kpi:{income_total:0,expense_total:0,net:0,tx_count:0,income_count:0,expense_count:0},
-    byMethod:[], byCatIncome:[], byCatExpense:[],
-    expenseByDocType:[], suppliersTop:[], closings:[], recentTx:[]
-  };
-
-  // Transactions
-  const sh = getSheet_(SH_TX);
-  const last = sh.getLastRow();
-  if(last>=2){
-    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-    const c={}; header.forEach((h,i)=>c[h]=i);
-    const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
-
-    const byMethod={}, byCatIn={}, byCatEx={}, byDoc={}, bySup={}, perDay={};
-
-    const rows = data.filter(r=>{
-      const d = r[c.date];
-      if(df && d < df) return false;
-      if(dt && d > dt) return false;
-      if(store && c.store !== undefined){
-        const st = r[c.store];
-        if(st !== store) return false;
-      }
-      return true;
-    });
-
-    rows.forEach(r=>{
-        const t=r[c.type], m=r[c.method], cat=r[c.category], sup=r[c.supplier], dtp=r[c.doc_type], amt=toNum_(r[c.amount]);
-        const st = c.store!==undefined ? r[c.store] : '';
-        const key = `${r[c.date]}|${st}`;
-        const pd = perDay[key] || (perDay[key]={income:0,expenses:{}});
-      if(!byMethod[m]) byMethod[m]={income:0,expense:0};
-      if(t==='INCOME'){
-        res.kpi.income_total += amt; res.kpi.income_count++;
-        byMethod[m].income += amt;
-        if(cat) byCatIn[cat] = (byCatIn[cat]||0) + amt;
-        pd.income += amt;
-      }else if(t==='EXPENSE'){
-        res.kpi.expense_total += amt; res.kpi.expense_count++;
-        byMethod[m].expense += amt;
-        if(cat) byCatEx[cat] = (byCatEx[cat]||0) + amt;
-        if(dtp){ const o=byDoc[dtp]||{amount:0,count:0}; o.amount+=amt; o.count++; byDoc[dtp]=o; }
-        if(sup){
-          const o=bySup[sup]||{amount:0,count:0}; o.amount+=amt; o.count++; bySup[sup]=o;
-          pd.expenses[sup] = (pd.expenses[sup]||0) + amt;
-        }
-      }
-    });
-
-    rows.sort((a,b)=> new Date(b[c.timestamp]) - new Date(a[c.timestamp]));
-    rows.slice(0,100).forEach(r=>{
-        res.recentTx.push({
-          timestamp:r[c.timestamp],
-          date:r[c.date],
-          type:r[c.type],
-          method:r[c.method],
-        category:r[c.category]||'',
-        supplier:r[c.supplier]||'',
-        doc_type:r[c.doc_type]||'',
-        doc_number:c.doc_number!==undefined? (r[c.doc_number]||'') : '',
-        doc_date:c.doc_date!==undefined? (r[c.doc_date]||'') : '',
-        description:r[c.description]||'',
-        amount: toNum_(r[c.amount]),
-        user:r[c.user]||''
-      });
-    });
-
-    Object.keys(byMethod).forEach(k=>res.byMethod.push({method:k||'-',income:round2(byMethod[k].income),expense:round2(byMethod[k].expense)}));
-    Object.keys(byCatIn).forEach(k=>res.byCatIncome.push({category:k,amount:round2(byCatIn[k])}));
-    Object.keys(byCatEx).forEach(k=>res.byCatExpense.push({category:k,amount:round2(byCatEx[k])}));
-    Object.keys(byDoc).forEach(k=>res.expenseByDocType.push({doc_type:k,amount:round2(byDoc[k].amount),count:byDoc[k].count}));
-    Object.keys(bySup).forEach(k=>res.suppliersTop.push({supplier:k,amount:round2(bySup[k].amount),count:bySup[k].count}));
-
-    res.kpi.income_total = round2(res.kpi.income_total);
-    res.kpi.expense_total= round2(res.kpi.expense_total);
-    res.kpi.net          = round2(res.kpi.income_total - res.kpi.expense_total);
-    res.kpi.tx_count     = res.kpi.income_count + res.kpi.expense_count;
-  }
-
-  // CashCounts per day
-  const shc = getSheet_(SH_CNT);
-  const lastc = shc.getLastRow();
-  const cashMap = {};
-  if(lastc >= 2){
-    const hc = shc.getRange(1,1,1,shc.getLastColumn()).getValues()[0];
-    const ic = {}; hc.forEach((v,i)=>ic[v]=i);
-    const denomCols = Object.keys(ic).filter(k=>k.startsWith('qty_'));
-    const datac = shc.getRange(2,1,lastc-1,shc.getLastColumn()).getValues();
-    datac.forEach(r=>{
-      const d = r[ic.date];
-      const st = r[ic.store];
-      if(df && d<df) return;
-      if(dt && d>dt) return;
-      if(store && st!==store) return;
-      const key = `${d}|${st}`;
-      const arr = [];
-      denomCols.forEach(col=>{
-        const qty = r[ic[col]];
-        if(qty){ const denom = col.replace('qty_',''); arr.push(`${denom}x${qty}`); }
-      });
-      cashMap[key] = arr.join(';');
-    });
-  }
-
-  // DayClosings
-  const shd = getSheet_(SH_DAY);
-  const lastd = shd.getLastRow();
-  if(lastd >= 2){
-    const h = shd.getRange(1,1,1,shd.getLastColumn()).getValues()[0];
-    const idx = {}; h.forEach((v,i)=>idx[v]=i);
-    const data = shd.getRange(2,1,lastd-1,shd.getLastColumn()).getValues();
-    const perDay = {};
-    data.forEach(r=>{
-      const d = r[idx.date];
-      const st = r[idx.store];
-      if(df && d<df) return;
-      if(dt && d>dt) return;
-      if(store && st!==store) return;
-      const key = `${d}|${st}`;
-      const pd = perDay[key] || {income:0,expenses:{}};
-      const expStr = Object.keys(pd.expenses).map(s=>`${s}:${round2(pd.expenses[s])}`).join(';');
-      res.closings.push({
-        date:d, store:st,
-        sales_cash:r[idx.sales_cash]||0,
-        sales_card:r[idx.sales_card]||0,
-        sales_bank:r[idx.sales_bank]||0,
-        expenses_cash:r[idx.expenses_cash]||0,
-        expenses_card:r[idx.expenses_card]||0,
-        expenses_bank:r[idx.expenses_bank]||0,
-        declared_cash:r[idx.declared_cash]||0,
-        expected_cash:r[idx.expected_cash]||0,
-        diff:r[idx.diff]||0,
-        banknotes:cashMap[key]||'',
-        expense_suppliers:expStr,
-        income_total:round2(pd.income)
-      });
-    });
-  }
-
-  return res;
-}
-
-function exportReportCsvV2(query){
-  const data = getReportV2(query);
-  const q = v => `"${String(v??'').replace(/"/g,'""').replace(/\n/g,' ') }"`;
-  const lines = [];
-  const from = data.range.from||'', to = data.range.to||'', store = data.range.store||'Всички';
-
-  lines.push(`Период от,${from},до,${to},Магазин,${store}`);
-  lines.push('');
-  lines.push('KPI');
-  lines.push(`Общ приход,${data.kpi.income_total}`);
-  lines.push(`Общ разход,${data.kpi.expense_total}`);
-  lines.push(`Нето,${data.kpi.net}`);
-  lines.push(`Брой операции,${data.kpi.tx_count}`);
-  lines.push('');
-  lines.push('По метод');
-  lines.push('Метод,Приход,Разход');
-  data.byMethod.forEach(m=> lines.push(`${q(m.method)},${m.income},${m.expense}`));
-  lines.push('');
-  lines.push('Приходи по категории');
-  lines.push('Категория,Сума');
-  data.byCatIncome.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
-  lines.push('');
-  lines.push('Разходи по категории');
-  lines.push('Категория,Сума');
-  data.byCatExpense.forEach(c=> lines.push(`${q(c.category)},${c.amount}`));
-  lines.push('');
-  lines.push('Разходи по тип документ');
-  lines.push('Тип,Сума,Брой');
-  data.expenseByDocType.forEach(d=> lines.push(`${q(d.doc_type)},${d.amount},${d.count}`));
-  lines.push('');
-  lines.push('Топ доставчици');
-  lines.push('Доставчик,Сума,Брой');
-  data.suppliersTop.forEach(s=> lines.push(`${q(s.supplier)},${s.amount},${s.count}`));
-  lines.push('');
-  lines.push('Дневни отчети');
-  lines.push('Дата,Магазин,Прод. каса,Прод. карта,Прод. банка,Разх. каса,Разх. карта,Разх. банка,Декл. каса,Очакв. каса,Разлика,Банкноти,Разходи доставчици,Приход');
-  data.closings.forEach(c=> lines.push(`${c.date},${q(c.store)},${c.sales_cash},${c.sales_card},${c.sales_bank},${c.expenses_cash},${c.expenses_card},${c.expenses_bank},${c.declared_cash},${c.expected_cash},${c.diff},${q(c.banknotes)},${q(c.expense_suppliers)},${c.income_total}`));
-  lines.push('');
-  lines.push('Последни операции');
-  lines.push('timestamp,date,type,method,category,supplier,doc_type,doc_number,doc_date,description,amount,user');
-  data.recentTx.forEach(t=>{
-    lines.push([
-      t.timestamp,t.date,t.type,t.method,t.category||'',t.supplier||'',
-      t.doc_type||'',t.doc_number||'',t.doc_date||'',t.description||'',t.amount,t.user||''
-    ].map(q).join(','));
-  });
-
-  return Utilities.newBlob(lines.join('\n'),'text/csv',`Report_${from}_${to}_${store}.csv`);
-}
-
-/** ===================== INTERNALS ===================== **/
+/**************************************************
+ * INTERNALS
+ **************************************************/
 function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
-  // Transactions – миграция, добавяме липсващи колони без да чупим реда
+  // Transactions
   const txHeader = ['timestamp','date','type','method','category','supplier','doc_type','doc_number','doc_date','description','amount','user'];
   let shTx = ss.getSheetByName(SH_TX);
   if(!shTx){
@@ -497,16 +271,13 @@ function ensureSheets_(){
     });
     if(shTx.getFrozenRows() === 0) shTx.setFrozenRows(1);
   }
-  // map header -> index
   TX_COLS = {};
   const header = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0];
   header.forEach((h,i)=>{ TX_COLS[String(h)] = i; });
 
   // CashCounts
   const denoms = getExistingOrDefaultDenoms_();
-  ensureSheetWithHeader_(ss, SH_CNT, [
-    'timestamp','date','store', ...denoms.map(d=>`qty_${d}`), 'total','user'
-  ]);
+  ensureSheetWithHeader_(ss, SH_CNT, ['timestamp','date','store', ...denoms.map(d=>`qty_${d}`), 'total','user']);
 
   // DayClosings
   ensureSheetWithHeader_(ss, SH_DAY, [
@@ -521,7 +292,6 @@ function ensureSheets_(){
   ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
   ensureSheetWithHeader_(ss, SH_SUP, ['supplier','created_at','created_by']);
 }
-
 function ensureSheetWithHeader_(ss, name, header){
   let sh = ss.getSheetByName(name);
   if(!sh) sh = ss.insertSheet(name);
@@ -530,7 +300,6 @@ function ensureSheetWithHeader_(ss, name, header){
     sh.setFrozenRows(1);
   }
 }
-
 function getExistingOrDefaultDenoms_(){
   const ss = SpreadsheetApp.openById(SS_ID);
   let sh = ss.getSheetByName(SH_CNT);
@@ -540,46 +309,38 @@ function getExistingOrDefaultDenoms_(){
   if(cols.length === 0) return DEFAULT_DENOMS.slice();
   return cols.map(c => Number(String(c).replace('qty_','')) );
 }
-
 function getSheet_(name){
   const ss = SpreadsheetApp.openById(SS_ID);
   const sh = ss.getSheetByName(name);
   if(!sh) throw new Error('Липсва лист: '+name);
   return sh;
 }
-
 function toDateOnly_(v){
   if(!v) return null;
   const d = new Date(v);
   if(isNaN(d.getTime())) return null;
   return Utilities.formatDate(d, TZ, 'yyyy-MM-dd');
 }
-
 function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
 }
 
-/** ===================== VIBER BOT (plug-in към съществуващия бекенд) ===================== **/
+/**************************************************
+ * BOTS: Viber + Telegram
+ **************************************************/
+
+/* ====== Viber ====== */
 // !!! СМЕНИ ТОКЕНА !!!
-const VIBER_AUTH_TOKEN = 'PASTE_YOUR_TOKEN_HERE';
+const VIBER_AUTH_TOKEN = 'PASTE_YOUR_VIBER_TOKEN';
 const VIBER_API = 'https://chatapi.viber.com/pa';
 
-// Стъпки на уизарда
 const VBR_STEP = {
-  START:'START',
-  TYPE:'TYPE',
-  CATEGORY:'CATEGORY',
-  SUPPLIER:'SUPPLIER',
-  DOC_TYPE:'DOC_TYPE',
-  DOC_NUMBER:'DOC_NUMBER',
-  DOC_DATE:'DOC_DATE',
-  AMOUNT:'AMOUNT',
-  METHOD:'METHOD',
-  NOTE:'NOTE',
-  CONFIRM:'CONFIRM'
+  START:'START', TYPE:'TYPE', CATEGORY:'CATEGORY', SUPPLIER:'SUPPLIER',
+  DOC_TYPE:'DOC_TYPE', DOC_NUMBER:'DOC_NUMBER', DOC_DATE:'DOC_DATE',
+  AMOUNT:'AMOUNT', METHOD:'METHOD', NOTE:'NOTE', CONFIRM:'CONFIRM'
 };
 
-// Хелпъри за state в CacheService
+// Viber state
 function vbrKey_(uid){ return 'VBR_STATE_'+uid; }
 function vbrGetState_(uid){
   const c = CacheService.getUserCache();
@@ -593,7 +354,7 @@ function vbrSetState_(uid, patch){
   const c = CacheService.getUserCache();
   const cur = vbrGetState_(uid);
   const next = Object.assign({}, cur, patch);
-  c.put(vbrKey_(uid), JSON.stringify(next), 21600); // 6 часа
+  c.put(vbrKey_(uid), JSON.stringify(next), 21600);
   return next;
 }
 function vbrReset_(uid){
@@ -602,7 +363,7 @@ function vbrReset_(uid){
   vbrSetState_(uid, { step: VBR_STEP.START });
 }
 
-// Клавиатури
+// Viber keyboards
 function vbrBtn_(text, value){
   return {"Columns":6,"Rows":1,"BgColor":"#FFFFFF","ActionType":"reply","ActionBody":value,"Text":text};
 }
@@ -620,12 +381,8 @@ function vbrTypeKb_(){
     vbrBtn_('➖ EXPENSE','EXPENSE')
   ]};
 }
-function vbrMethodsKb_(){
-  return {"Type":"keyboard","DefaultHeight":true,"Buttons": DEFAULT_METHODS.map(m=>vbrBtn_(m,m)) };
-}
-function vbrDocTypesKb_(){
-  return {"Type":"keyboard","DefaultHeight":true,"Buttons": DOC_TYPES.map(d=>vbrBtn_(d,d)) };
-}
+function vbrMethodsKb_(){ return {"Type":"keyboard","DefaultHeight":true,"Buttons": DEFAULT_METHODS.map(m=>vbrBtn_(m,m)) }; }
+function vbrDocTypesKb_(){ return {"Type":"keyboard","DefaultHeight":true,"Buttons": DOC_TYPES.map(d=>vbrBtn_(d,d)) }; }
 function vbrCategoriesKb_(type){
   const cats = getMeta().categories[type] || [];
   return {"Type":"keyboard","DefaultHeight":true,"Buttons": cats.map(c=>vbrBtn_(c,c)) };
@@ -637,35 +394,26 @@ function vbrConfirmKb_(){
   ]};
 }
 
-// Viber API
+// Viber API helpers
 function vbrSend_(receiverId, text, keyboard){
   const payload = { receiver: receiverId, min_api_version: 7, type: 'text', text: String(text) };
   if (keyboard) payload.keyboard = keyboard;
   const res = UrlFetchApp.fetch(VIBER_API + '/send_message', {
-    method:'post', contentType:'application/json',
-    payload: JSON.stringify(payload),
-    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN },
-    muteHttpExceptions:true
+    method:'post', contentType:'application/json', payload: JSON.stringify(payload),
+    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN }, muteHttpExceptions:true
   });
   SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\nSEND '+res.getResponseCode()+': '+res.getContentText()).split('\n').slice(-200).join('\n'));
 }
 function setViberWebhook(){
   const url = ScriptApp.getService().getUrl();
-  const payload = {
-    url,
-    event_types: ['conversation_started','message','subscribed','unsubscribed','delivered','seen','webhook'],
-    send_name:true, send_photo:false
-  };
+  const payload = { url, event_types:['conversation_started','message','subscribed','unsubscribed','delivered','seen','webhook'], send_name:true, send_photo:false };
   const res = UrlFetchApp.fetch(VIBER_API + '/set_webhook', {
-    method:'post', contentType:'application/json',
-    payload: JSON.stringify(payload),
-    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN },
-    muteHttpExceptions:true
+    method:'post', contentType:'application/json', payload: JSON.stringify(payload),
+    headers: { 'X-Viber-Auth-Token': VIBER_AUTH_TOKEN }, muteHttpExceptions:true
   });
   SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\nWEBHOOK '+res.getResponseCode()+': '+res.getContentText()).split('\n').slice(-200).join('\n'));
 }
-
-// Подпис: HMAC-SHA256(body, token) -> hex lower
+// Viber signature
 function vbrVerifySig_(body, signature){
   try{
     if (!signature) return false;
@@ -674,220 +422,430 @@ function vbrVerifySig_(body, signature){
     return hex === String(signature).toLowerCase();
   }catch(e){ return false; }
 }
-
-// Удобен лог
 function vbrLog_(){
   const now = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss');
   const line = now+' | '+[].slice.call(arguments).map(a=>{ try{return (typeof a==='string')?a:JSON.stringify(a);}catch(e){return String(a);} }).join(' | ');
   SP.setProperty('VBR_LOG', ((SP.getProperty('VBR_LOG')||'')+'\n'+line).split('\n').slice(-200).join('\n'));
 }
 function vbrGetLogs_(){ return (SP.getProperty('VBR_LOG')||'').split('\n').filter(Boolean).slice(-50).join('\n'); }
-
-// doPost – Viber webhook (добавяме към приложението)
-function doPost(e){
-  ensureSheets_(); // гарантираме таблиците
-
-  const body = e && e.postData && e.postData.contents ? e.postData.contents : '';
-  if (!body) return ContentService.createTextOutput('ok');
-
-  // Някои контейнерни среди не подават headers обект; защитаваме се
-  const sig = (e.postData.headers && (e.postData.headers['X-Viber-Content-Signature'] || e.postData.headers['x-viber-content-signature'])) || null;
-  if (!vbrVerifySig_(body, sig)) {
-    vbrLog_('INVALID_SIG');
-    return ContentService.createTextOutput('invalid signature');
-  }
-
-  const data = JSON.parse(body);
-  vbrLog_('IN', data.event);
-
-  switch (data.event) {
-    case 'webhook': return ContentService.createTextOutput('webhook ok');
-
-    case 'conversation_started': {
-      const uid = data.user && data.user.id;
-      if (uid){
-        vbrReset_(uid);
-        vbrSend_(uid, 'Здравей! Избери операция:', vbrMainKb_());
-      }
-      return ContentService.createTextOutput('ok');
-    }
-
-    case 'subscribed': {
-      const uid = data.user && data.user.id;
-      if (uid){
-        vbrReset_(uid);
-        vbrSend_(uid, 'Абонамент активен. Избери операция:', vbrMainKb_());
-      }
-      return ContentService.createTextOutput('ok');
-    }
-
-    case 'message': {
-      const uid = data.sender && data.sender.id;
-      const text = (data.message && data.message.text || '').trim();
-      if (!uid) return ContentService.createTextOutput('ok');
-
-      // системни команди
-      if (text.toLowerCase() === '/reset' || text === '📤 Reset'){
-        vbrReset_(uid);
-        vbrSend_(uid, 'Сесията е нулирана. Избери операция:', vbrMainKb_());
-        return ContentService.createTextOutput('ok');
-      }
-      if (text.toLowerCase() === '/logs' || text === '🧾 Logs'){
-        vbrSend_(uid, vbrGetLogs_() || 'Няма логове.');
-        return ContentService.createTextOutput('ok');
-      }
-
-      // уизард
-      vbrHandleWizard_(uid, text);
-      return ContentService.createTextOutput('ok');
-    }
-
-    default:
-      return ContentService.createTextOutput('ok');
-  }
-}
-
-// Уизард: пита точно полетата, които очаква твоя addTransaction()
 function vbrHandleWizard_(uid, text){
   const st = vbrGetState_(uid);
 
-  // избор тип
   if (st.step === VBR_STEP.START || st.step === VBR_STEP.TYPE){
     let picked = null;
     if (text.includes('➖') || text.toUpperCase()==='EXPENSE' || text.toLowerCase()==='/expense') picked = 'EXPENSE';
     if (text.includes('➕') || text.toUpperCase()==='INCOME'  || text.toLowerCase()==='/income')  picked = 'INCOME';
-
-    if (!picked){
-      vbrSetState_(uid, { step: VBR_STEP.TYPE });
-      vbrSend_(uid, 'Избери тип:', vbrTypeKb_()); return;
-    }
-
-    vbrSetState_(uid, { type:picked, step: VBR_STEP.CATEGORY });
-    vbrSend_(uid, 'Избери категория:', vbrCategoriesKb_(picked)); return;
+    if (!picked){ vbrSetState_(uid,{step:VBR_STEP.TYPE}); vbrSend_(uid,'Избери тип:', vbrTypeKb_()); return; }
+    vbrSetState_(uid,{type:picked, step:VBR_STEP.CATEGORY});
+    vbrSend_(uid,'Избери категория:', vbrCategoriesKb_(picked)); return;
   }
-
-  // категория
   if (st.step === VBR_STEP.CATEGORY){
     const cats = getMeta().categories[st.type] || [];
-    if (!cats.includes(text)){
-      vbrSend_(uid, 'Избери валидна категория:', vbrCategoriesKb_(st.type)); return;
-    }
-    if (st.type === 'EXPENSE'){
-      vbrSetState_(uid, { category:text, step: VBR_STEP.SUPPLIER });
-      vbrSend_(uid, 'Въведи доставчик (име):'); return;
-    } else {
-      vbrSetState_(uid, { category:text, step: VBR_STEP.AMOUNT });
-      vbrSend_(uid, 'Въведи сума (точка за десетични):'); return;
-    }
+    if (!cats.includes(text)){ vbrSend_(uid,'Избери валидна категория:', vbrCategoriesKb_(st.type)); return; }
+    if (st.type === 'EXPENSE'){ vbrSetState_(uid,{category:text, step:VBR_STEP.SUPPLIER}); vbrSend_(uid,'Въведи доставчик (име):'); return; }
+    vbrSetState_(uid,{category:text, step:VBR_STEP.AMOUNT}); vbrSend_(uid,'Въведи сума (точка за десетични):'); return;
   }
-
-  // доставчик
   if (st.step === VBR_STEP.SUPPLIER){
-    const sup = String(text).trim();
-    if (!sup){ vbrSend_(uid,'Въведи доставчик:'); return; }
-    vbrSetState_(uid, { supplier:sup, step: VBR_STEP.DOC_TYPE });
-    vbrSend_(uid, 'Избери тип документ:', vbrDocTypesKb_()); return;
+    const sup = String(text).trim(); if (!sup){ vbrSend_(uid,'Въведи доставчик:'); return; }
+    vbrSetState_(uid,{supplier:sup, step:VBR_STEP.DOC_TYPE}); vbrSend_(uid,'Избери тип документ:', vbrDocTypesKb_()); return;
   }
-
-  // тип документ
   if (st.step === VBR_STEP.DOC_TYPE){
     const d = String(text).toUpperCase();
     if (!DOC_TYPES.includes(d)){ vbrSend_(uid,'Избери валиден тип документ:', vbrDocTypesKb_()); return; }
-    // за фактурни типове ще иска номер и дата
     if (['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(d)){
-      vbrSetState_(uid, { doc_type:d, step: VBR_STEP.DOC_NUMBER });
-      vbrSend_(uid, 'Въведи номер на документ:'); return;
+      vbrSetState_(uid,{doc_type:d, step:VBR_STEP.DOC_NUMBER}); vbrSend_(uid,'Въведи номер на документ:'); return;
     } else {
-      vbrSetState_(uid, { doc_type:d, doc_number:'', step: VBR_STEP.DOC_DATE });
-      vbrSend_(uid, 'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+      vbrSetState_(uid,{doc_type:d, doc_number:'', step:VBR_STEP.DOC_DATE}); vbrSend_(uid,'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
     }
   }
-
-  // номер документ
   if (st.step === VBR_STEP.DOC_NUMBER){
-    const num = String(text).trim();
-    if (!num){ vbrSend_(uid, 'Въведи номер на документ:'); return; }
-    vbrSetState_(uid, { doc_number:num, step: VBR_STEP.DOC_DATE });
-    vbrSend_(uid, 'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+    const num = String(text).trim(); if (!num){ vbrSend_(uid,'Въведи номер на документ:'); return; }
+    vbrSetState_(uid,{doc_number:num, step:VBR_STEP.DOC_DATE}); vbrSend_(uid,'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
   }
-
-  // дата документ
   if (st.step === VBR_STEP.DOC_DATE){
-    const dd = String(text).trim();
-    // 1:1 към твоя формат – валидираме в addTransaction; тук само събираме
-    vbrSetState_(uid, { doc_date:dd, step: VBR_STEP.AMOUNT });
-    vbrSend_(uid, 'Въведи сума (точка за десетични):'); return;
+    vbrSetState_(uid,{doc_date:String(text).trim(), step:VBR_STEP.AMOUNT}); vbrSend_(uid,'Въведи сума (точка за десетични):'); return;
   }
-
-  // сума
   if (st.step === VBR_STEP.AMOUNT){
-    const a = parseFloat(String(text).replace(',','.'));
-    if (!(a>0)){ vbrSend_(uid,'Невалидна сума. Опитай пак:'); return; }
-    vbrSetState_(uid, { amount:a, step: VBR_STEP.METHOD });
-    vbrSend_(uid, 'Метод на плащане:', vbrMethodsKb_()); return;
+    const a = parseFloat(String(text).replace(',','.')); if (!(a>0)){ vbrSend_(uid,'Невалидна сума. Опитай пак:'); return; }
+    vbrSetState_(uid,{amount:a, step:VBR_STEP.METHOD}); vbrSend_(uid,'Метод на плащане:', vbrMethodsKb_()); return;
   }
-
-  // метод
   if (st.step === VBR_STEP.METHOD){
-    const m = String(text).toUpperCase();
-    if (!DEFAULT_METHODS.includes(m)){ vbrSend_(uid,'Избери валиден метод:', vbrMethodsKb_()); return; }
-    vbrSetState_(uid, { method:m, step: VBR_STEP.NOTE });
-    vbrSend_(uid, 'Бележка (по избор) – напиши текст или „-”:'); return;
+    const m = String(text).toUpperCase(); if (!DEFAULT_METHODS.includes(m)){ vbrSend_(uid,'Избери валиден метод:', vbrMethodsKb_()); return; }
+    vbrSetState_(uid,{method:m, step:VBR_STEP.NOTE}); vbrSend_(uid,'Бележка (по избор) – напиши текст или „-”:'); return;
   }
-
-  // бележка
   if (st.step === VBR_STEP.NOTE){
     const note = (text === '-' ? '' : String(text));
-    vbrSetState_(uid, { note, step: VBR_STEP.CONFIRM });
+    vbrSetState_(uid,{note, step:VBR_STEP.CONFIRM});
     const s = vbrGetState_(uid);
     const review = [
-      `Тип: ${s.type}`,
-      `Категория: ${s.category||''}`,
-      `Доставчик: ${s.supplier||''}`,
+      `Тип: ${s.type}`, `Категория: ${s.category||''}`, `Доставчик: ${s.supplier||''}`,
       `Документ: ${s.doc_type||''} №${s.doc_number||''} ${s.doc_date?('('+s.doc_date+')'):''}`,
-      `Сума: ${s.amount}`,
-      `Метод: ${s.method}`,
-      `Описание: ${note||''}`
+      `Сума: ${s.amount}`, `Метод: ${s.method}`, `Описание: ${note||''}`
     ].join('\n');
     vbrSend_(uid, 'Провери и потвърди:\n\n'+review, vbrConfirmKb_()); return;
   }
-
-  // потвърждение
   if (st.step === VBR_STEP.CONFIRM){
     if (text === '✅ Потвърди'){
       try{
-        // Сглобяваме payload за твоя addTransaction()
         const s = vbrGetState_(uid);
         const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
         const payload = {
-          date: today,
-          type: s.type,
-          method: s.method,
-          category: s.category || '',
-          description: s.note || '',
-          amount: s.amount,
+          date: today, type: s.type, method: s.method,
+          category: s.category || '', description: s.note || '', amount: s.amount,
           supplier: s.type==='EXPENSE' ? s.supplier : '',
           doc_type: s.type==='EXPENSE' ? (s.doc_type||'') : '',
           doc_number: s.type==='EXPENSE' ? (s.doc_number||'') : '',
           doc_date: s.type==='EXPENSE' ? (s.doc_date||'') : ''
         };
-        addTransaction(payload); // използваме твоя валидатор и запис
+        addTransaction(payload);
         if (payload.supplier) { try{ addSupplier(payload.supplier); }catch(e){} }
         vbrSend_(uid, '✅ Записано. Можеш да започнеш нова операция.', vbrMainKb_());
         vbrReset_(uid);
-      }catch(err){
-        vbrSend_(uid, '❌ Грешка: '+err.message);
-      }
+      }catch(err){ vbrSend_(uid, '❌ Грешка: '+err.message); }
       return;
     }
-    if (text === '❌ Отмени'){
-      vbrReset_(uid);
-      vbrSend_(uid, '❌ Отменено. Започни наново.', vbrMainKb_()); return;
-    }
+    if (text === '❌ Отмени'){ vbrReset_(uid); vbrSend_(uid, '❌ Отменено. Започни наново.', vbrMainKb_()); return; }
     vbrSend_(uid, 'Натисни „✅ Потвърди“ или „❌ Отмени“.', vbrConfirmKb_()); return;
   }
-
-  // fallback
-  vbrSetState_(uid, { step: VBR_STEP.TYPE });
-  vbrSend_(uid, 'Избери операция:', vbrTypeKb_());
+  vbrSetState_(uid,{step:VBR_STEP.TYPE});
+  vbrSend_(uid,'Избери операция:', vbrTypeKb_());
 }
+
+/* ====== Telegram ====== */
+/***** ===== TELEGRAM (clean) ===== *****/
+const TG_TOKEN  = '8387121974:AAGwblEpebB_WgxIjZS7SAaoWzmXIB-5BPE';
+const TG_SECRET = 'epoha2206_tg_secret_2025';
+const TG_API    = 'https://api.telegram.org/bot' + TG_TOKEN;
+
+const TG_STEP = {
+  START:'START', TYPE:'TYPE', CATEGORY:'CATEGORY', SUPPLIER:'SUPPLIER',
+  DOC_TYPE:'DOC_TYPE', DOC_NUMBER:'DOC_NUMBER', DOC_DATE:'DOC_DATE',
+  AMOUNT:'AMOUNT', METHOD:'METHOD', NOTE:'NOTE', CONFIRM:'CONFIRM'
+};
+
+/* ===== State (без рекурсия) ===== */
+function tgKey_(uid){ return 'TG_STATE_'+uid; }
+
+function tgGetState_(uid){
+  const c = CacheService.getUserCache();
+  const raw = c.get(tgKey_(uid));
+  if (raw){ try { return JSON.parse(raw); } catch(e){} }
+  const init = { step: TG_STEP.START };
+  c.put(tgKey_(uid), JSON.stringify(init), 21600); // 6 часа
+  return init;
+}
+
+function tgSetState_(uid, patch){
+  const c = CacheService.getUserCache();
+  let cur = {};
+  const raw = c.get(tgKey_(uid));
+  if (raw){ try { cur = JSON.parse(raw) || {}; } catch(e){} }
+  const next = Object.assign({}, cur, patch);
+  c.put(tgKey_(uid), JSON.stringify(next), 21600);
+  return next;
+}
+
+function tgReset_(uid){
+  const c = CacheService.getUserCache();
+  c.remove(tgKey_(uid));
+  c.put(tgKey_(uid), JSON.stringify({ step: TG_STEP.START }), 21600);
+}
+
+/* ===== Keyboards ===== */
+function tgKb_(rows){ return { keyboard: rows, resize_keyboard:true, one_time_keyboard:false }; }
+function tgMainKb_(){ return tgKb_([['➖ Разход','➕ Приход'],['📤 Reset','🧾 Logs']]); }
+function tgTypeKb_(){ return tgKb_([['➕ INCOME','➖ EXPENSE']]); }
+function tgMethodsKb_(){ return tgKb_([DEFAULT_METHODS]); }
+function tgDocTypesKb_(){
+  const rows=[]; DOC_TYPES.forEach((d,i)=>{ if(i%3===0) rows.push([]); rows[rows.length-1].push(d); });
+  return tgKb_(rows);
+}
+function tgCategoriesKb_(type){
+  const cats = getMeta().categories[type] || [];
+  const rows=[]; cats.forEach((c,i)=>{ if(i%3===0) rows.push([]); rows[rows.length-1].push(c); });
+  return tgKb_(rows.length?rows:[['Друго']]);
+}
+
+/* ===== API ===== */
+function tgSend_(chatId, text, kb){
+  const payload = { chat_id: chatId, text: String(text) };
+  if (kb) payload.reply_markup = JSON.stringify(kb);
+
+  const res = UrlFetchApp.fetch(TG_API + '/sendMessage', {
+    method:'post', payload, muteHttpExceptions:true
+  });
+
+  SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+
+    `\nTG_SEND to=${chatId} resp=${res.getResponseCode()} ${res.getContentText()}`).split('\n').slice(-200).join('\n'));
+}
+
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwzndATrElud-Knu9fsZJ-6dTxug5ps578hKR662Uy9SC-PY2qsrc3XLmnOcYYXvrPS/exec';
+function setTelegramWebhook(){
+  const url = ScriptApp.getService().getUrl(); // ВАЖНО: това е /exec
+  const res = UrlFetchApp.fetch(TG_API + '/setWebhook', {
+    method:'post', contentType:'application/json',
+    payload: JSON.stringify({
+      url,
+      secret_token: TG_SECRET,
+      allowed_updates:['message'],
+      drop_pending_updates:true
+    }),
+    muteHttpExceptions:true
+  });
+  Logger.log(res.getResponseCode()+' '+res.getContentText());
+}
+
+function tgGetWebhookInfo(){
+  const r = UrlFetchApp.fetch(TG_API + '/getWebhookInfo', { muteHttpExceptions:true });
+  Logger.log(r.getResponseCode()+' '+r.getContentText());
+}
+
+function tgGetMe(){
+  const r = UrlFetchApp.fetch(TG_API + '/getMe', { muteHttpExceptions:true });
+  Logger.log(r.getResponseCode()+' '+r.getContentText());
+}
+
+/* ===== Router ===== */
+function tgHandleUpdate_(upd){
+  const msg = upd.message;
+  if (!msg) return;
+  const chatId = msg.chat.id;
+  const uid = String(chatId);
+  const text = (msg.text || '').trim();
+
+  if (text === '/start'){ tgReset_(uid); tgSend_(chatId,'Готов съм. Избери операция:', tgMainKb_()); return; }
+  if (text === '/reset' || text === '📤 Reset'){ tgReset_(uid); tgSend_(chatId,'Сесията е нулирана. Избери операция:', tgMainKb_()); return; }
+  if (text === '/logs'  || text === '🧾 Logs'){ tgSend_(chatId, (SP.getProperty('TG_LOG')||'').split('\n').filter(Boolean).slice(-20).join('\n') || 'Няма логове.'); return; }
+
+  tgHandleWizard_(uid, chatId, text);
+}
+
+function tgHandleWizard_(uid, chatId, text){
+  const st = tgGetState_(uid);
+
+  if (st.step === TG_STEP.START || st.step === TG_STEP.TYPE){
+    let picked=null;
+    if (text.includes('➖') || text.toUpperCase()==='EXPENSE' || text.toLowerCase()==='/expense') picked='EXPENSE';
+    if (text.includes('➕') || text.toUpperCase()==='INCOME'  || text.toLowerCase()==='/income')  picked='INCOME';
+    if (!picked){ tgSetState_(uid,{step:TG_STEP.TYPE}); tgSend_(chatId,'Избери тип:', tgTypeKb_()); return; }
+    tgSetState_(uid,{type:picked, step:TG_STEP.CATEGORY});
+    tgSend_(chatId,'Избери категория:', tgCategoriesKb_(picked)); return;
+  }
+
+  if (st.step === TG_STEP.CATEGORY){
+    const cats = getMeta().categories[st.type] || [];
+    if (!cats.includes(text)){ tgSend_(chatId,'Избери валидна категория:', tgCategoriesKb_(st.type)); return; }
+    if (st.type === 'EXPENSE'){ tgSetState_(uid,{category:text, step:TG_STEP.SUPPLIER}); tgSend_(chatId,'Въведи доставчик (име):'); return; }
+    tgSetState_(uid,{category:text, step:TG_STEP.AMOUNT}); tgSend_(chatId,'Въведи сума (точка за десетични):'); return;
+  }
+
+  if (st.step === TG_STEP.SUPPLIER){
+    const sup = String(text).trim(); if (!sup){ tgSend_(chatId,'Въведи доставчик:'); return; }
+    tgSetState_(uid,{supplier:sup, step:TG_STEP.DOC_TYPE}); tgSend_(chatId,'Избери тип документ:', tgDocTypesKb_()); return;
+  }
+
+  if (st.step === TG_STEP.DOC_TYPE){
+    const d = String(text).toUpperCase();
+    if (!DOC_TYPES.includes(d)){ tgSend_(chatId,'Избери валиден тип документ:', tgDocTypesKb_()); return; }
+    if (['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(d)){
+      tgSetState_(uid,{doc_type:d, step:TG_STEP.DOC_NUMBER}); tgSend_(chatId,'Въведи номер на документ:'); return;
+    } else {
+      tgSetState_(uid,{doc_type:d, doc_number:'', step:TG_STEP.DOC_DATE}); tgSend_(chatId,'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+    }
+  }
+
+  if (st.step === TG_STEP.DOC_NUMBER){
+    const num = String(text).trim(); if (!num){ tgSend_(chatId,'Въведи номер на документ:'); return; }
+    tgSetState_(uid,{doc_number:num, step:TG_STEP.DOC_DATE}); tgSend_(chatId,'Въведи дата на документа (ГГГГ-ММ-ДД):'); return;
+  }
+
+  if (st.step === TG_STEP.DOC_DATE){
+    tgSetState_(uid,{doc_date:String(text).trim(), step:TG_STEP.AMOUNT}); tgSend_(chatId,'Въведи сума (точка за десетични):'); return;
+  }
+
+  if (st.step === TG_STEP.AMOUNT){
+    const a = parseFloat(String(text).replace(',','.')); if (!(a>0)){ tgSend_(chatId,'Невалидна сума. Опитай пак:'); return; }
+    tgSetState_(uid,{amount:a, step:TG_STEP.METHOD}); tgSend_(chatId,'Метод на плащане:', tgMethodsKb_()); return;
+  }
+
+  if (st.step === TG_STEP.METHOD){
+    const m = String(text).toUpperCase(); if (!DEFAULT_METHODS.includes(m)){ tgSend_(chatId,'Избери валиден метод:', tgMethodsKb_()); return; }
+    tgSetState_(uid,{method:m, step:TG_STEP.NOTE}); tgSend_(chatId,'Бележка (по избор) – напиши текст или „-”:'); return;
+  }
+
+  if (st.step === TG_STEP.NOTE){
+    const note = (text === '-' ? '' : String(text));
+    tgSetState_(uid,{note, step:TG_STEP.CONFIRM});
+    const s = tgGetState_(uid);
+    const review = [
+      `Тип: ${s.type}`, `Категория: ${s.category||''}`, `Доставчик: ${s.supplier||''}`,
+      `Документ: ${s.doc_type||''} №${s.doc_number||''} ${s.doc_date?('('+s.doc_date+')'):''}`,
+      `Сума: ${s.amount}`, `Метод: ${s.method}`, `Описание: ${note||''}`
+    ].join('\n');
+    tgSend_(chatId,'Провери и потвърди:\n\n'+review, tgKb_([['✅ Потвърди','❌ Отмени']])); return;
+  }
+
+  if (st.step === TG_STEP.CONFIRM){
+    if (text === '✅ Потвърди'){
+      try{
+        const s = tgGetState_(uid);
+        const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+        const payload = {
+          date: today, type: s.type, method: s.method,
+          category: s.category || '', description: s.note || '', amount: s.amount,
+          supplier: s.type==='EXPENSE' ? s.supplier : '',
+          doc_type: s.type==='EXPENSE' ? (s.doc_type||'') : '',
+          doc_number: s.type==='EXPENSE' ? (s.doc_number||'') : '',
+          doc_date: s.type==='EXPENSE' ? (s.doc_date||'') : ''
+        };
+        addTransaction(payload);
+        if (payload.supplier) { try{ addSupplier(payload.supplier); }catch(e){} }
+        tgSend_(chatId,'✅ Записано. Можеш да започнеш нова операция.', tgMainKb_());
+        tgReset_(uid);
+      }catch(err){ tgSend_(chatId,'❌ Грешка: '+err.message); }
+      return;
+    }
+    if (text === '❌ Отмени'){ tgReset_(uid); tgSend_(chatId,'❌ Отменено. Започни наново.', tgMainKb_()); return; }
+    tgSend_(chatId,'Натисни „✅ Потвърди“ или „❌ Отмени“.', tgKb_([['✅ Потвърди','❌ Отмени']])); return;
+  }
+
+  tgSetState_(uid,{step:TG_STEP.TYPE});
+  tgSend_(chatId,'Избери операция:', tgTypeKb_());
+}
+
+/**************************************************
+ * COMMON HELPERS
+ **************************************************/
+function getHdr_(hdrs, name){
+  if (!hdrs) return '';
+  if (hdrs[name] != null) return hdrs[name];
+  const low = name.toLowerCase();
+  for (var k in hdrs){
+    if (!Object.prototype.hasOwnProperty.call(hdrs,k)) continue;
+    if (String(k).toLowerCase() === low) return hdrs[k];
+  }
+  return '';
+}
+
+/**************************************************
+ * Единен doPost (с проверка на secret + лог)
+ **************************************************/
+// helper: case-insensitive header
+function getHdr_(hdrs, name){
+  if (!hdrs) return '';
+  if (hdrs[name] != null) return hdrs[name];
+  const low = name.toLowerCase();
+  for (var k in hdrs){
+    if (Object.prototype.hasOwnProperty.call(hdrs,k) && String(k).toLowerCase() === low) return hdrs[k];
+  }
+  return '';
+}
+
+/** ====== doPost (с проверка на secret + лог) ====== */
+function getHdr_(hdrs, name){
+  if (!hdrs) return '';
+  if (hdrs[name] != null) return hdrs[name];
+  const low = name.toLowerCase();
+  for (var k in hdrs){
+    if (!Object.prototype.hasOwnProperty.call(hdrs,k)) continue;
+    if (String(k).toLowerCase() === low) return hdrs[k];
+  }
+  return '';
+}
+
+function doPost(e){
+  ensureSheets_();
+
+  const body   = e && e.postData && e.postData.contents ? e.postData.contents : '';
+  const hdrs   = (e && e.postData && e.postData.headers) ? e.postData.headers : {};
+  const hjson  = JSON.stringify(hdrs || {}).slice(0, 800);
+  const bfrag  = String(body || '').slice(0, 800);
+
+  SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+
+    `\nHIT ${new Date().toISOString()} HDRS:${hjson} BODY:${bfrag}`).split('\n').slice(-300).join('\n'));
+
+  if (!body){
+    SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+'\nEMPTY_BODY').split('\n').slice(-300).join('\n'));
+    return ContentService.createTextOutput('ok');
+  }
+
+  // Telegram?
+  let obj=null; try { obj = JSON.parse(body); } catch(_){ obj = null; }
+  const isTelegram = obj && Object.prototype.hasOwnProperty.call(obj, 'update_id');
+
+  if (isTelegram){
+    const tgSecretHdr = getHdr_(hdrs, 'X-Telegram-Bot-Api-Secret-Token');
+    if (tgSecretHdr !== TG_SECRET){
+      SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+
+        `\nBAD_SECRET got="${tgSecretHdr}" expected="${TG_SECRET}"`).split('\n').slice(-300).join('\n'));
+      return ContentService.createTextOutput('ok');
+    }
+    try{
+      tgHandleUpdate_(obj);
+      SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+'\nTG_HANDLED').split('\n').slice(-300).join('\n'));
+    }catch(err){
+      SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+'\nTG_ERR '+(err && err.stack || err)).split('\n').slice(-300).join('\n'));
+    }
+    return ContentService.createTextOutput('ok');
+  }
+
+  // Viber?
+  const viberSig = getHdr_(hdrs, 'X-Viber-Content-Signature');
+  if (viberSig){
+    if (!vbrVerifySig_(body, viberSig)) {
+      vbrLog_('INVALID_SIG');
+      return ContentService.createTextOutput('invalid signature');
+    }
+    try{
+      const data = JSON.parse(body);
+      vbrLog_('IN', data.event);
+
+      switch (data.event) {
+        case 'webhook': return ContentService.createTextOutput('webhook ok');
+        case 'conversation_started': {
+          const uid = data.user && data.user.id;
+          if (uid){ vbrReset_(uid); vbrSend_(uid,'Здравей! Избери операция:', vbrMainKb_()); }
+          return ContentService.createTextOutput('ok');
+        }
+        case 'subscribed': {
+          const uid = data.user && data.user.id;
+          if (uid){ vbrReset_(uid); vbrSend_(uid,'Абонамент активен. Избери операция:', vbrMainKb_()); }
+          return ContentService.createTextOutput('ok');
+        }
+        case 'message': {
+          const uid = data.sender && data.sender.id;
+          const text = (data.message && data.message.text || '').trim();
+          if (!uid) return ContentService.createTextOutput('ok');
+          if (text.toLowerCase()==='/reset' || text==='📤 Reset'){ vbrReset_(uid); vbrSend_(uid,'Сесията е нулирана. Избери операция:', vbrMainKb_()); return ContentService.createTextOutput('ok'); }
+          if (text.toLowerCase()==='/logs'  || text==='🧾 Logs'){ vbrSend_(uid, vbrGetLogs_() || 'Няма логове.'); return ContentService.createTextOutput('ok'); }
+          vbrHandleWizard_(uid, text);
+          return ContentService.createTextOutput('ok');
+        }
+        default: return ContentService.createTextOutput('ok');
+      }
+    }catch(err){
+      vbrLog_('VBR_ERR', err && err.stack || err);
+      return ContentService.createTextOutput('ok');
+    }
+  }
+
+  // Unknown
+  SP.setProperty('TG_LOG', ((SP.getProperty('TG_LOG')||'')+'\nUNKNOWN_PAYLOAD').split('\n').slice(-300).join('\n'));
+  return ContentService.createTextOutput('ok');
+}
+
+
+/**************************************************
+ * УТИЛИТИ: байпас и диагностика
+ **************************************************/
+function tgBypassOn(){ PropertiesService.getScriptProperties().setProperty('TG_SILENT','1'); }
+function tgBypassOff(){ PropertiesService.getScriptProperties().setProperty('TG_SILENT','0'); }
+
+function tgGetWebhookInfo(){
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot'+TG_TOKEN+'/getWebhookInfo', {muteHttpExceptions:true});
+  Logger.log(r.getResponseCode()+' '+r.getContentText());
+}
+
+function dbgShowLogs(){ Logger.log(PropertiesService.getScriptProperties().getProperty('TG_LOG') || '(empty)'); }
+function dbgClearLogs(){ PropertiesService.getScriptProperties().deleteProperty('TG_LOG'); Logger.log('cleared'); }
+
