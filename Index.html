@@ -304,8 +304,8 @@
 
     function initReportFilters(){
       if(!META){ google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta(); return; }
-      byId('rep_from').value = today();
-      byId('rep_to').value = today();
+      if(!byId('rep_from').value) byId('rep_from').value = today();
+      if(!byId('rep_to').value) byId('rep_to').value = today();
       const s = byId('rep_store');
       const stores = Array.isArray(META.stores) ? META.stores : [];
       s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
@@ -369,9 +369,6 @@
       byId('store').innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
       byId('tx_method').innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
       refillCategories();
-      byId('date').value = today();
-      byId('tx_from').value = today();
-      byId('tx_to').value = today();
       fillDenoms();
       fillDocTypes();
       loadSuppliers();
@@ -578,8 +575,20 @@
       </tr>`).join('');
     }
 
-    // boot
-    google.script.run.withSuccessHandler(fillMeta).getMeta();
+    // boot с „сървърно днес“
+    google.script.run.withSuccessHandler(server=>{
+      const dkey = server && server.dateKey ? server.dateKey : today(); // fallback
+      // попълваме всички дати със server.dateKey
+      byId('date').value    = dkey;
+      byId('tx_from').value = dkey;
+      byId('tx_to').value   = dkey;
+      byId('rep_from').value= dkey;
+      byId('rep_to').value  = dkey;
+
+      // после META и останалото
+      google.script.run.withSuccessHandler(fillMeta).getMeta();
+    }).getServerNow();
+
     byId('tx_type').addEventListener('change', onTypeChange);
   </script>
 </body>

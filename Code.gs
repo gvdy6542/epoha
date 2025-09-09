@@ -105,6 +105,7 @@ function addTransaction(payload){
 
   const dateOnly = toDateOnly_(payload.date);
   if(!dateOnly) throw new Error('Невалидна дата');
+  const dateKey = String(dateOnly); // yyyy-MM-dd
 
   const user = Session.getActiveUser().getEmail() || 'anonymous';
   const store = payload.store || 'Основен';
@@ -133,6 +134,7 @@ function addTransaction(payload){
   const row = new Array(Object.keys(cols).length).fill('');
   row[cols.timestamp]    = new Date();
   row[cols.date]         = dateOnly;
+  if(cols.dateKey !== undefined) row[cols.dateKey] = dateKey;
   if(cols.store       !== undefined) row[cols.store]       = store;
   row[cols.type]         = type;
   row[cols.method]       = method;
@@ -160,15 +162,16 @@ function listTransactions(query){
   const cols = TX_COLS;
 
   const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
-  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
-  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const df = query?.dateFrom ? String(toDateOnly_(query.dateFrom)) : null; // yyyy-MM-dd
+  const dt = query?.dateTo   ? String(toDateOnly_(query.dateTo))   : null;
   const store = query?.store ? String(query.store) : null;
+  const dkIdx = (typeof cols.dateKey === 'number') ? cols.dateKey : cols.date; // fallback към 'date'
 
   let rows = data.filter(r => {
-    const date = r[cols.date];
+    const dkey = String(r[dkIdx] || '');
     let ok = true;
-    if(df && date < df) ok = false;
-    if(dt && date > dt) ok = false;
+    if (df && dkey < df) ok = false;
+    if (dt && dkey > dt) ok = false;
     if(store && cols.store !== undefined && String(r[cols.store]) !== store) ok = false;
     return ok;
   });
@@ -285,7 +288,10 @@ function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
   // Transactions
-  const txHeader = ['timestamp','date','store','type','method','category','description','amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'];
+  const txHeader = [
+    'timestamp','date','dateKey','store','type','method','category','description',
+    'amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'
+  ];
   let shTx = ss.getSheetByName(SH_TX);
   if(!shTx){
     shTx = ss.insertSheet(SH_TX);
@@ -353,6 +359,19 @@ function toDateOnly_(v){
 }
 function round2_(n){
   return Math.round((Number(n)||0)*100)/100;
+}
+
+function fmt_(d, p){ return Utilities.formatDate(d, TZ, p); }
+function todayKey_(){ return fmt_(new Date(), 'yyyy-MM-dd'); }
+
+function getServerNow(){
+  const now = new Date();
+  return {
+    ok: true,
+    tz: TZ,
+    nowIso: fmt_(now, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    dateKey: fmt_(now, 'yyyy-MM-dd')
+  };
 }
 
 /**************************************************
