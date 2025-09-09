@@ -107,11 +107,14 @@ function addTransaction(payload){
   if(!dateOnly) throw new Error('Невалидна дата');
 
   const user = Session.getActiveUser().getEmail() || 'anonymous';
+  const store = payload.store || 'Основен';
 
   let supplier = payload.supplier || '';
   let docType = payload.doc_type || '';
   let docNumber = payload.doc_number || '';
   let docDate = payload.doc_date ? toDateOnly_(payload.doc_date) : '';
+  let docFileId = payload.doc_file_id || '';
+  let docFileUrl = payload.doc_file_url || '';
 
   if(type === 'EXPENSE'){
     supplier = String(supplier||'').trim();
@@ -130,16 +133,19 @@ function addTransaction(payload){
   const row = new Array(Object.keys(cols).length).fill('');
   row[cols.timestamp]    = new Date();
   row[cols.date]         = dateOnly;
+  if(cols.store       !== undefined) row[cols.store]       = store;
   row[cols.type]         = type;
   row[cols.method]       = method;
   row[cols.category]     = payload.category || '';
+  row[cols.description]  = payload.description || '';
+  row[cols.amount]       = round2_(amount);
+  row[cols.user]         = user;
   if(cols.supplier     !== undefined) row[cols.supplier]     = supplier;
   if(cols.doc_type     !== undefined) row[cols.doc_type]     = docType;
   if(cols.doc_number   !== undefined) row[cols.doc_number]   = docNumber;
   if(cols.doc_date     !== undefined) row[cols.doc_date]     = docDate;
-  row[cols.description]  = payload.description || '';
-  row[cols.amount]       = round2_(amount);
-  row[cols.user]         = user;
+  if(cols.doc_file_id  !== undefined) row[cols.doc_file_id]  = docFileId;
+  if(cols.doc_file_url !== undefined) row[cols.doc_file_url] = docFileUrl;
 
   const sh = getSheet_(SH_TX);
   sh.appendRow(row);
@@ -156,12 +162,14 @@ function listTransactions(query){
   const toNum_ = v => Number(String(v||0).replace(',','.'))||0;
   const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
   const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const store = query?.store ? String(query.store) : null;
 
   let rows = data.filter(r => {
     const date = r[cols.date];
     let ok = true;
     if(df && date < df) ok = false;
     if(dt && date > dt) ok = false;
+    if(store && cols.store !== undefined && String(r[cols.store]) !== store) ok = false;
     return ok;
   });
   rows.sort((a,b)=> new Date(b[cols.timestamp]).getTime()-new Date(a[cols.timestamp]).getTime());
@@ -171,17 +179,39 @@ function listTransactions(query){
   return rows.map(r=>({
     timestamp: r[cols.timestamp],
     date: r[cols.date],
+    store: cols.store!==undefined ? r[cols.store] : '',
     type: r[cols.type],
     method: r[cols.method],
     category: cols.category!==undefined ? r[cols.category] : '',
+    description: cols.description!==undefined ? r[cols.description] : '',
+    amount: toNum_(r[cols.amount]),
+    user: cols.user!==undefined ? r[cols.user] : '',
     supplier: cols.supplier!==undefined ? r[cols.supplier] : '',
     doc_type: cols.doc_type!==undefined ? r[cols.doc_type] : '',
     doc_number: cols.doc_number!==undefined ? r[cols.doc_number] : '',
     doc_date: cols.doc_date!==undefined ? r[cols.doc_date] : '',
-    description: cols.description!==undefined ? r[cols.description] : '',
-    amount: toNum_(r[cols.amount]),
-    user: cols.user!==undefined ? r[cols.user] : ''
+    doc_file_id: cols.doc_file_id!==undefined ? r[cols.doc_file_id] : '',
+    doc_file_url: cols.doc_file_url!==undefined ? r[cols.doc_file_url] : ''
   }));
+}
+
+function getReportV2(query){
+  const tx = listTransactions({dateFrom: query?.dateFrom, dateTo: query?.dateTo, store: query?.store, limit: 1000});
+  const kpi = {income_total:0, expense_total:0, net:0, tx_count:tx.length};
+  tx.forEach(t => {
+    if(t.type === 'INCOME') kpi.income_total += Number(t.amount)||0;
+    else if(t.type === 'EXPENSE') kpi.expense_total += Number(t.amount)||0;
+  });
+  kpi.net = kpi.income_total - kpi.expense_total;
+  return {kpi, byMethod:[], byCatIncome:[], byCatExpense:[], expenseByDocType:[], suppliersTop:[], closings:[], recentTx: tx};
+}
+
+function exportReportCsvV2(query){
+  const tx = listTransactions({dateFrom: query?.dateFrom, dateTo: query?.dateTo, store: query?.store, limit: 1000});
+  const header = ['timestamp','date','store','type','method','category','description','amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'];
+  const rows = tx.map(t => [t.timestamp, t.date, t.store, t.type, t.method, t.category, t.description, t.amount, t.user, t.supplier, t.doc_type, t.doc_number, t.doc_date, t.doc_file_id, t.doc_file_url]);
+  const csv = [header.join(','), ...rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','))].join('\n');
+  return Utilities.newBlob(csv, 'text/csv', 'transactions.csv');
 }
 function saveCashCount(payload){
   ensureSheets_();
@@ -255,7 +285,7 @@ function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
   // Transactions
-  const txHeader = ['timestamp','date','type','method','category','supplier','doc_type','doc_number','doc_date','description','amount','user'];
+  const txHeader = ['timestamp','date','store','type','method','category','description','amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'];
   let shTx = ss.getSheetByName(SH_TX);
   if(!shTx){
     shTx = ss.insertSheet(SH_TX);

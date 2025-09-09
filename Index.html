@@ -162,7 +162,7 @@
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Описание</th><th>Сума</th><th>Потребител</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Файл ID</th><th>Файл URL</th>
               </tr>
             </thead>
             <tbody id="tx_rows"></tbody>
@@ -237,7 +237,7 @@
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Описание</th><th>Сума</th><th>Потребител</th>
+                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Описание</th><th>Сума</th><th>Потребител</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Файл ID</th><th>Файл URL</th>
               </tr>
             </thead>
             <tbody id="rep_recent_rows"></tbody>
@@ -483,16 +483,20 @@
       const tb = byId('tx_rows');
       tb.innerHTML = list.map(r=>`<tr>
         <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : ''}</td>
+        <td>${r.date||''}</td>
+        <td>${r.store||''}</td>
         <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
         <td>${r.method||''}</td>
         <td>${r.category||''}</td>
+        <td>${r.description||''}</td>
+        <td>${money(r.amount)}</td>
+        <td class="muted">${r.user||''}</td>
         <td>${r.supplier||''}</td>
         <td>${r.doc_type ? (DOC_LABEL[r.doc_type]||r.doc_type) : ''}</td>
         <td>${r.doc_number||''}</td>
         <td>${r.doc_date||''}</td>
-        <td>${r.description||''}</td>
-        <td>${money(r.amount)}</td>
-        <td class="muted">${r.user||''}</td>
+        <td>${r.doc_file_id||''}</td>
+        <td>${r.doc_file_url ? `<a href="${r.doc_file_url}" target="_blank">линк</a>` : ''}</td>
       </tr>`).join('');
     }
 
@@ -562,13 +566,15 @@
         <td>${t.type||''}</td>
         <td>${t.method||''}</td>
         <td>${t.category||''}</td>
+        <td>${t.description||''}</td>
+        <td>${money(t.amount)}</td>
+        <td class="muted">${t.user||''}</td>
         <td>${t.supplier||''}</td>
         <td>${t.doc_type ? (DOC_LABEL[t.doc_type]||t.doc_type) : ''}</td>
         <td>${t.doc_number||''}</td>
         <td>${t.doc_date||''}</td>
-        <td>${t.description||''}</td>
-        <td>${money(t.amount)}</td>
-        <td class="muted">${t.user||''}</td>
+        <td>${t.doc_file_id||''}</td>
+        <td>${t.doc_file_url ? `<a href="${t.doc_file_url}" target="_blank">линк</a>` : ''}</td>
       </tr>`).join('');
     }
 
