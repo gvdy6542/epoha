@@ -49,6 +49,14 @@ function showAdminPanel_(){
   SpreadsheetApp.getUi().showModalDialog(html, 'Админ панел');
 }
 function doGet(e){
+  // >>> ADD-ONLY: admin route guard (do not remove existing code below)
+  if (e && e.parameter && String(e.parameter.view).toLowerCase() === 'admin') {
+    return HtmlService.createHtmlOutputFromFile('Admin')
+      .setTitle('Админ панел')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setSandboxMode(HtmlService.SandboxMode.IFRAME);
+  }
+  // <<< END ADD-ONLY
   ensureSheets_();
   if (e && e.parameter && e.parameter.page === 'admin') {
     return HtmlService.createHtmlOutputFromFile('Admin')
@@ -529,4 +537,8 @@ function defaultReport_(){
     byMethod:[],byCatIncome:[],byCatExpense:[],
     expenseByDocType:[],suppliersTop:[],closings:[],recentTx:[]
   };
+}
+
+function getAdminUrl() {
+  return ScriptApp.getService().getUrl() + '?view=admin';
 }

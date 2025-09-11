@@ -138,5 +138,116 @@ function loadAll(){
 }
 function byId(id){ return document.getElementById(id); }
 </script>
+<style>
+body > * { display:none; }
+#adminApp { display:block; }
+.hidden{display:none;}
+nav button{margin-right:4px;}
+table{width:100%;border-collapse:collapse;margin-top:8px;}
+th,td{border:1px solid #e5e7eb;padding:4px;font-size:13px;text-align:left;}
+</style>
+<div id="adminApp">
+  <div id="loginView">
+    <input type="email" id="aEmail" placeholder="Email">
+    <input type="password" id="aPass" placeholder="Парола">
+    <button onclick="adminLogin()">Вход</button>
+  </div>
+  <div id="mainView" class="hidden">
+    <nav>
+      <button onclick="showTab('dash')">Dashboard</button>
+      <button onclick="showTab('users')">Users</button>
+      <button onclick="showTab('panels')">Panels</button>
+      <button onclick="showTab('tx')">Transactions</button>
+      <button onclick="showTab('logs')">Logs</button>
+      <button onclick="adminLogout()">Изход</button>
+    </nav>
+    <section id="tab-dash"></section>
+    <section id="tab-users" class="hidden">
+      <div>
+        <input type="text" id="uName" placeholder="Име">
+        <input type="email" id="uEmail" placeholder="Email">
+        <input type="password" id="uPass" placeholder="Парола">
+        <select id="uRole"><option>ADMIN</option><option>EDITOR</option><option selected>VIEWER</option></select>
+        <button onclick="saveUserUI()">Запази</button>
+      </div>
+      <table><thead><tr><th>Име</th><th>Email</th><th>Роля</th><th>Парола</th><th></th></tr></thead><tbody id="usersBody"></tbody></table>
+    </section>
+    <section id="tab-panels" class="hidden">
+      <table><thead><tr><th>Ключ</th><th>Заглавие</th><th>Видим</th></tr></thead><tbody id="panelsBody"></tbody></table>
+    </section>
+    <section id="tab-tx" class="hidden">
+      <input type="text" id="txFilter" placeholder="Филтър" oninput="loadTx()">
+      <table><thead><tr id="txHead"></tr></thead><tbody id="txBody"></tbody></table>
+    </section>
+    <section id="tab-logs" class="hidden">
+      <table><thead><tr><th>Време</th><th>Email</th><th>Действие</th><th>Детайли</th></tr></thead><tbody id="logsBody"></tbody></table>
+    </section>
+  </div>
+</div>
+<script>
+let ADMIN_TOKEN = null;
+function adminLogin(){
+  google.script.run.withSuccessHandler(res=>{
+    ADMIN_TOKEN = res.token;
+    byId('loginView').classList.add('hidden');
+    byId('mainView').classList.remove('hidden');
+    loadUsersUI(); loadPanelsUI(); loadTx(); loadLogsUI();
+    showTab('dash');
+  }).withFailureHandler(err=>alert(err.message||err))
+    .login(byId('aEmail').value, byId('aPass').value);
+}
+function adminLogout(){
+  google.script.run.logout(ADMIN_TOKEN);
+  ADMIN_TOKEN = null;
+  location.reload();
+}
+function showTab(t){
+  ['dash','users','panels','tx','logs'].forEach(id=>{
+    byId('tab-'+id).classList.add('hidden');
+  });
+  byId('tab-'+t).classList.remove('hidden');
+}
+function saveUserUI(){
+  google.script.run.withSuccessHandler(loadUsersUI)
+    .withFailureHandler(e=>alert(e.message||e))
+    .upsertUser(ADMIN_TOKEN,null,byId('uName').value,byId('uEmail').value,byId('uPass').value,byId('uRole').value);
+}
+function deleteUserUI(row,email){
+  google.script.run.withSuccessHandler(loadUsersUI)
+    .withFailureHandler(e=>alert(e.message||e))
+    .deleteUser(ADMIN_TOKEN,row,email);
+}
+function loadUsersUI(){
+  google.script.run.withSuccessHandler(list=>{
+    byId('usersBody').innerHTML = list.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${u.hasPassword?'✓':''}</td><td><button onclick="deleteUserUI(${u.row},'${u.email}')">X</button></td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .listUsers(ADMIN_TOKEN);
+}
+function loadPanelsUI(){
+  google.script.run.withSuccessHandler(list=>{
+    byId('panelsBody').innerHTML = list.map(p=>`<tr><td>${p.key}</td><td>${p.title}</td><td><input type="checkbox" ${p.visible?'checked':''} onchange="togglePanelUI(${p.row},this)"></td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .listPanels(ADMIN_TOKEN);
+}
+function togglePanelUI(row,ck){
+  google.script.run.withFailureHandler(e=>{ck.checked=!ck.checked;alert(e.message||e);})
+    .setPanelVisibility(ADMIN_TOKEN,row,ck.checked);
+}
+function loadTx(){
+  const f = byId('txFilter').value;
+  google.script.run.withSuccessHandler(res=>{
+    byId('txHead').innerHTML = res.header.map(h=>`<th>${h}</th>`).join('');
+    byId('txBody').innerHTML = res.rows.map(r=>`<tr>${res.header.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .getTransactions(ADMIN_TOKEN,1,20,{description:f});
+}
+function loadLogsUI(){
+  google.script.run.withSuccessHandler(res=>{
+    byId('logsBody').innerHTML = res.rows.map(r=>`<tr><td>${r.ts}</td><td>${r.email}</td><td>${r.action}</td><td>${r.details}</td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .getLogs(ADMIN_TOKEN,1,50);
+}
+function byId(id){return document.getElementById(id);}
+</script>
 </body>
 </html>
