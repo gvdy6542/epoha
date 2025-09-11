@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Отчитане на магазин </title>
+  <title>Отчитане на магазин</title>
   <style>
     body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}
     .wrap{max-width:1200px;margin:20px auto;padding:0 16px}
@@ -16,7 +16,7 @@
     .btn:disabled{opacity:.6;cursor:not-allowed}
     table{width:100%;border-collapse:collapse}
     th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;font-size:13px;vertical-align:top}
-    th{background:#f8fafc}
+    th{background:#f8fafc;position:sticky;top:0}
     .stat{display:flex;gap:8px;align-items:baseline}
     .stat .v{font-weight:700}
     .right{justify-self:end}
@@ -26,7 +26,8 @@
     .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
     .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
     .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center}
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px}
+    .modal .box{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;min-width:320px;max-width:420px}
   </style>
 </head>
 <body>
@@ -48,7 +49,7 @@
             <input type="date" id="date" />
           </div>
           <div class="right" style="grid-column: span 6; display:flex; gap:8px; justify-content:flex-end; align-items:end">
-            <button class="btn" onclick="refreshAll()">Обнови</button>
+            <button class="btn" onclick="refreshAllUI()">Обнови</button>
             <button onclick="openWebApp()">Отвори в нов таб</button>
           </div>
         </div>
@@ -74,7 +75,9 @@
               <select id="tx_category"></select>
             </div>
           </div>
-          <div id="expense_extra" style="display:none;margin-top:8px">
+
+          <!-- ДОПОЛНИТЕЛНИ ПОЛЕТА ЗА РАЗХОД -->
+          <div id="expense_extra" style="display:none; margin-top:8px">
             <div class="grid2">
               <div>
                 <label>Доставчик</label>
@@ -99,6 +102,7 @@
               </div>
             </div>
           </div>
+
           <div class="grid2" style="margin-top:8px">
             <div>
               <label>Сума</label>
@@ -110,12 +114,12 @@
             </div>
           </div>
           <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
-            <button class="btn" id="btn_add" onclick="addTx()">Добави</button>
+            <button class="btn" id="btn_add" onclick="addTxUI()">Добави</button>
           </div>
         </div>
 
         <div class="card" style="grid-column: span 7">
-          <h3>Обобщение за деня</h3>
+          <h3>Обобщение (кумулативно)</h3>
           <div id="summary" class="grid3"></div>
           <div class="muted" style="margin-top:8px" id="summary_note"></div>
         </div>
@@ -127,7 +131,7 @@
           <div id="denoms" class="grid3"></div>
           <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
             <div class="stat">Декларирани пари в каса: <span class="v" id="declared">0.00</span> лв</div>
-            <button class="btn" onclick="saveCount()">Запиши броене</button>
+            <button class="btn" onclick="saveCountUI()">Запиши броене</button>
           </div>
         </div>
 
@@ -137,7 +141,7 @@
           <textarea id="close_note" rows="3" placeholder="Коментар"></textarea>
           <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end; align-items:center">
             <div class="muted">Използва декларираната сума от броенето.</div>
-            <button class="btn" onclick="closeDay()">Приключи деня</button>
+            <button class="btn" onclick="closeDayUI()">Приключи деня</button>
           </div>
           <div id="close_result" style="margin-top:8px"></div>
         </div>
@@ -146,6 +150,7 @@
       <div class="row" style="margin-top:12px">
         <div class="card" style="grid-column: span 12">
           <h3>Последни операции</h3>
+
           <div class="grid3" style="margin-bottom:8px">
             <div>
               <label>От дата</label>
@@ -156,17 +161,75 @@
               <input type="date" id="tx_to" />
             </div>
             <div style="display:flex;align-items:flex-end;justify-content:flex-end">
-              <button class="btn" onclick="refreshTx()">Филтър</button>
+              <button class="btn" onclick="refreshTxUI()">Филтър</button>
             </div>
           </div>
+
           <table>
             <thead>
               <tr>
-                <th>Час</th><th>Дата</th><th>Магазин</th><th>Тип</th><th>Метод</th><th>Категория</th><th>Описание</th><th>Сума</th><th>Потребител</th><th>Доставчик</th><th>Док. тип</th><th>№</th><th>Док. дата</th><th>Файл ID</th><th>Файл URL</th>
+                <th>Час</th>
+                <th>Дата</th>
+                <th>Магазин</th>
+                <th>Тип</th>
+                <th>Метод</th>
+                <th>Категория</th>
+                <th>Описание</th>
+                <th>Сума</th>
+                <th>Потребител</th>
+                <th>Доставчик</th>
+                <th>Док. тип</th>
+                <th>№</th>
+                <th>Док. дата</th>
+                <th>Файл ID</th>
+                <th>Файл URL</th>
+              </tr>
+              <!-- ред с филтри -->
+              <tr>
+                <th></th>
+                <th><input id="f_date" type="text" placeholder="yyyy-mm-dd" oninput="applyTxFilters()"></th>
+                <th><input id="f_store" type="text" placeholder="Магазин" oninput="applyTxFilters()"></th>
+                <th>
+                  <select id="f_type" onchange="applyTxFilters()">
+                    <option value="">Всички</option>
+                    <option value="INCOME">Приход</option>
+                    <option value="EXPENSE">Разход</option>
+                  </select>
+                </th>
+                <th>
+                  <select id="f_method" onchange="applyTxFilters()">
+                    <option value="">Всички</option>
+                  </select>
+                </th>
+                <th><input id="f_category" type="text" placeholder="Категория" oninput="applyTxFilters()"></th>
+                <th><input id="f_desc" type="text" placeholder="Търси..." oninput="applyTxFilters()"></th>
+                <th>
+                  <input id="f_amount_min" type="number" step="0.01" placeholder="мин" style="width:48%" oninput="applyTxFilters()">
+                  <input id="f_amount_max" type="number" step="0.01" placeholder="макс" style="width:48%" oninput="applyTxFilters()">
+                </th>
+                <th><input id="f_user" type="text" placeholder="user" oninput="applyTxFilters()"></th>
+                <th>
+                  <select id="f_supplier" onchange="applyTxFilters()">
+                    <option value="">Всички</option>
+                  </select>
+                </th>
+                <th>
+                  <select id="f_doc_type" onchange="applyTxFilters()">
+                    <option value="">Всички</option>
+                  </select>
+                </th>
+                <th><input id="f_doc_number" type="text" placeholder="№" oninput="applyTxFilters()"></th>
+                <th><input id="f_doc_date" type="text" placeholder="yyyy-mm-dd" oninput="applyTxFilters()"></th>
+                <th><input id="f_file_id" type="text" placeholder="id" oninput="applyTxFilters()"></th>
+                <th><input id="f_file_url" type="text" placeholder="url" oninput="applyTxFilters()"></th>
               </tr>
             </thead>
             <tbody id="tx_rows"></tbody>
           </table>
+
+          <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end">
+            <button onclick="clearTxFilters()">Изчисти филтрите</button>
+          </div>
         </div>
       </div>
     </div>
@@ -188,8 +251,8 @@
           </div>
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end">
-          <button class="btn" onclick="generateReport()">Генерирай</button>
-          <button onclick="exportReport()">Експорт CSV</button>
+          <button class="btn" onclick="generateReportUI()">Генерирай</button>
+          <button onclick="exportReportUI()">Експорт CSV</button>
         </div>
       </div>
 
@@ -247,12 +310,14 @@
     </div>
   </div>
 
-  <div id="modal_supplier" class="modal">
-    <div class="card">
-      <h3>Нов доставчик</h3>
+  <!-- MODAL: Нов доставчик -->
+  <div id="modal_supplier" class="modal" onclick="modalBgClose(event)">
+    <div class="box">
+      <h3 style="margin-top:0">Нов доставчик</h3>
+      <label>Име</label>
       <input type="text" id="new_supplier_name" />
-      <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn" onclick="createSupplier()">Добави</button>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="createSupplierUI()">Добави</button>
         <button onclick="closeSupplierModal()">Отказ</button>
       </div>
     </div>
@@ -277,209 +342,60 @@
     ];
     const DOC_LABEL = {}; DOC_TYPES.forEach(d=>DOC_LABEL[d.v]=d.label);
 
+    function byId(id){ return document.getElementById(id); }
     function openWebApp(){ window.open(location.href, '_blank'); }
-
     function today(){
       const d = new Date();
       const mm = String(d.getMonth()+1).padStart(2,'0');
       const dd = String(d.getDate()).padStart(2,'0');
       return `${d.getFullYear()}-${mm}-${dd}`;
     }
-
-    function money(n){
-      const v = Number(String(n??0).replace(',','.')) || 0;
-      return v.toFixed(2);
-    }
-    function byId(id){ return document.getElementById(id); }
-
-    function showTab(name){
-      byId('tab_main').style.display = name==='main'?'block':'none';
-      byId('tab_reports').style.display = name==='reports'?'block':'none';
-    }
-
-    function openReports(){
-      showTab('reports');
-      initReportFilters();
-    }
-
-    function initReportFilters(){
-      if(!META){ google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta(); return; }
-      if(!byId('rep_from').value) byId('rep_from').value = today();
-      if(!byId('rep_to').value) byId('rep_to').value = today();
-      const s = byId('rep_store');
-      const stores = Array.isArray(META.stores) ? META.stores : [];
-      s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
-    }
-
-    function loadSuppliers(sel){
-      google.script.run.withSuccessHandler(list=>{
-        const s = byId('tx_supplier');
-        const arr = Array.isArray(list) ? list : [];
-        s.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
-        if(sel) s.value = sel;
-      }).listSuppliers();
-    }
-
-    function openSupplierModal(){
-      byId('new_supplier_name').value='';
-      document.getElementById('modal_supplier').style.display='flex';
-    }
-    function closeSupplierModal(){ document.getElementById('modal_supplier').style.display='none'; }
-    function createSupplier(){
-      const name = byId('new_supplier_name').value;
-      google.script.run.withSuccessHandler(()=>{
-        closeSupplierModal();
-        loadSuppliers(name);
-      }).withFailureHandler(err=> alert(err.message||err)).addSupplier(name);
-    }
-
-    function setDeclared(){
-      let total = 0;
-      const boxes = document.querySelectorAll('[data-denom]');
-      boxes.forEach(b=>{
-        const d = Number(b.dataset.denom);
-        const q = Number(b.value||0);
-        total += d*q;
+    function setAllDatesToToday(){
+      const t = today();
+      ['date','tx_from','tx_to','rep_from','rep_to','tx_doc_date'].forEach(id=>{
+        const el = byId(id);
+        if(el && !el.value) el.value = t;
       });
-      byId('declared').textContent = money(total);
-      return total;
     }
+    function money(n){ return (Number(String(n||0).replace(',','.'))||0).toFixed(2); }
 
-    function fillDenoms(){
-      const wrap = byId('denoms');
-      wrap.innerHTML = '';
-      (META.denoms||[]).forEach(d => {
-        const div = document.createElement('div');
-        div.innerHTML = `
-          <label>${Number(d).toFixed(2)} лв – брой</label>
-          <input type="number" min="0" step="1" data-denom="${d}" value="0" oninput="setDeclared()" />
-        `;
-        wrap.appendChild(div);
-      });
-      setDeclared();
-    }
-
-    function fillDocTypes(){
-      const s = byId('tx_doc_type');
-      s.innerHTML = DOC_TYPES.map(o=>`<option value="${o.v}">${o.label}</option>`).join('');
-    }
-
-    function fillMeta(meta){
-      META = meta;
-      byId('store').innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
-      byId('tx_method').innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
-      refillCategories();
-      fillDenoms();
-      fillDocTypes();
-      loadSuppliers();
-      refreshAll();
-      onTypeChange();
-    }
-
-    function refillCategories(){
-      const type = byId('tx_type').value;
-      const c = byId('tx_category');
-      const arr = (META.categories[type]||[]);
-      c.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join('');
-    }
-
-    function onTypeChange(){
-      refillCategories();
-      const isExp = byId('tx_type').value === 'EXPENSE';
-      byId('expense_extra').style.display = isExp ? 'block' : 'none';
-    }
-
-    function addTx(){
-      const btn = byId('btn_add');
-      btn.disabled = true;
-      const payload = {
-        date: byId('date').value,
-        store: byId('store').value,
-        type: byId('tx_type').value,
-        method: byId('tx_method').value,
-        category: byId('tx_category').value,
-        description: byId('tx_desc').value,
-        amount: Number(byId('tx_amount').value||0)
-      };
-      if(payload.type === 'EXPENSE'){
-        payload.supplier = byId('tx_supplier').value;
-        payload.doc_type = byId('tx_doc_type').value;
-        payload.doc_number = byId('tx_doc_number').value;
-        payload.doc_date = byId('tx_doc_date').value;
-      }
-      google.script.run.withSuccessHandler(()=>{
-        byId('tx_amount').value=''; byId('tx_desc').value='';
-        refreshAll();
-        btn.disabled = false;
-      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
-    }
-
-    function saveCount(){
-      const counts = {};
-      document.querySelectorAll('[data-denom]').forEach(b=>{
-        counts[b.dataset.denom] = Number(b.value||0);
-      });
-      const payload = { date: byId('date').value, store: byId('store').value, counts };
-      google.script.run.withSuccessHandler(res=>{
-        byId('declared').textContent = money(res.total);
-        alert('Броенето е записано.');
-      }).withFailureHandler(err=> alert(err.message||err)).saveCashCount(payload);
-    }
-
-    function closeDay(){
-      const declared = Number(byId('declared').textContent.replace(',','.'))||0;
-      const payload = {
-        date: byId('date').value,
-        store: byId('store').value,
-        declaredCash: declared,
-        note: byId('close_note').value
-      };
-      google.script.run.withSuccessHandler(res=>{
-        const diffCls = res.diff === 0 ? 'ok' : 'bad';
-        byId('close_result').innerHTML = `
-          <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
-          <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
-          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>
-        `;
-        refreshAll();
-      }).withFailureHandler(err=> alert(err.message||err)).closeDay(payload);
-    }
-
-    function refreshAll(){
-      const d = byId('date').value;
-      const s = byId('store').value;
-      google.script.run.withSuccessHandler(drawSummary).getDailySummary(d, s);
-      refreshTx();
-    }
-
-    function refreshTx(){
-      const df = byId('tx_from').value || byId('date').value;
-      const dt = byId('tx_to').value || byId('date').value;
-      const s = byId('store').value;
-      const q = {dateFrom: df, dateTo: dt, store: s, limit: 200};
-      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>{ alert(e.message||e); drawTx([]); }).listTransactions(q);
-    }
-
-    function drawSummary(s){
-      if(!s){ byId('summary').innerHTML=''; byId('summary_note').textContent=''; return;}
+    /* ===== SUMMARY (кумулативно) ===== */
+    function drawSummaryCum(s){
       const el = byId('summary');
       const parts = [
-        {label:'Продажби – Каса', v: s.sales.CASH||0},
-        {label:'Продажби – Карта', v: s.sales.CARD||0},
-        {label:'Продажби – Банка', v: s.sales.BANK||0},
+        {label:'Приходи – Каса', v: s.sales.CASH||0},
+        {label:'Приходи – Карта', v: s.sales.CARD||0},
+        {label:'Приходи – Банка', v: s.sales.BANK||0},
         {label:'Разходи – Каса', v: s.expenses.CASH||0},
         {label:'Разходи – Карта', v: s.expenses.CARD||0},
         {label:'Разходи – Банка', v: s.expenses.BANK||0},
       ];
-      el.innerHTML = parts.map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span> <span class="v">${money(p.v)} лв</span></div></div>`).join('');
-      byId('summary_note').textContent = `Очаквани пари в каса: ${money(s.expectedCash)} лв`;
+      el.innerHTML = parts.map(p=>`
+        <div class="card"><div class="stat"><span>${p.label}:</span>
+          <span class="v">${money(p.v)} лв</span></div></div>`).join('');
+      byId('summary_note').textContent =
+        `Очаквани пари в каса (кумулативно до датата): ${money(s.expectedCash)} лв`;
+    }
+    function refreshSummaryOnlyUI(){
+      const d = byId('date').value || today();
+      const s = byId('store').value || '';
+      google.script.run
+        .withSuccessHandler(drawSummaryCum)
+        .withFailureHandler(e=>console.error(e))
+        .getCumulativeSummary(d, s);
     }
 
+    /* ===== Транзакции – таблица + филтри ===== */
+    let TX_ALL = [];
     function drawTx(rows){
-      const list = Array.isArray(rows) ? rows : [];
+      TX_ALL = Array.isArray(rows) ? rows : [];
+      fillTxFilterSources();
+      applyTxFilters();
+    }
+    function renderTx(list){
       const tb = byId('tx_rows');
-      tb.innerHTML = list.map(r=>`<tr>
-        <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : ''}</td>
+      tb.innerHTML = (list||[]).map(r=>`<tr>
+        <td>${r.timestamp ? new Date(r.timestamp).toLocaleTimeString('bg-BG') : ''}</td>
         <td>${r.date||''}</td>
         <td>${r.store||''}</td>
         <td>${r.type==='INCOME'?'Приход':'Разход'}</td>
@@ -496,23 +412,137 @@
         <td>${r.doc_file_url ? `<a href="${r.doc_file_url}" target="_blank">линк</a>` : ''}</td>
       </tr>`).join('');
     }
-
-    function generateReport(){
-      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
-      google.script.run.withSuccessHandler(drawReport).withFailureHandler(err=>alert(err.message||err)).getReportV2(q);
+    function refreshTxUI(){
+      const df = byId('tx_from').value || today();
+      const dt = byId('tx_to').value   || today();
+      const s = byId('store').value || '';
+      const q = {dateFrom: df, dateTo: dt, store: s, limit: 500};
+      google.script.run.withSuccessHandler(drawTx).withFailureHandler(e=>{ alert(e.message||e); drawTx([]); }).listTransactions(q);
     }
 
-    function exportReport(){
-      const q = { dateFrom: byId('rep_from').value, dateTo: byId('rep_to').value, store: byId('rep_store').value || '' };
-      google.script.run.withSuccessHandler(blob=>{
-        const url = 'data:text/csv;charset=utf-8,' + encodeURIComponent(blob.getDataAsString());
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = blob.getName();
-        document.body.appendChild(a); a.click(); a.remove();
-      }).withFailureHandler(err=>alert(err.message||err)).exportReportCsvV2(q);
+    function fillDocTypes(){
+      const el = byId('tx_doc_type');
+      el.innerHTML = DOC_TYPES.map(d => `<option value="${d.v}">${d.label}</option>`).join('');
+    }
+    function refillCategories(){
+      const type = (byId('tx_type').value || '').trim().toUpperCase();
+      const c = byId('tx_category');
+      const arr = (META && META.categories && META.categories[type]) ? META.categories[type] : [];
+      c.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join('');
+    }
+    function onTypeChange(){
+      const val = (byId('tx_type').value || '').trim().toUpperCase();
+      const isExpense = (val === 'EXPENSE');
+      byId('expense_extra').style.display = isExpense ? 'block' : 'none';
+      refillCategories();
+    }
+    document.addEventListener('change', (e)=>{ if(e.target && e.target.id==='tx_type') onTypeChange(); });
+
+    /* ===== Деноминации ===== */
+    function setDeclared(){
+      let total = 0;
+      const boxes = document.querySelectorAll('[data-denom]');
+      boxes.forEach(b=>{
+        const d = Number(b.dataset.denom);
+        const q = Number(b.value||0);
+        total += d*q;
+      });
+      byId('declared').textContent = money(total);
+      return total;
+    }
+    function fillDenoms(){
+      const wrap = byId('denoms');
+      wrap.innerHTML = '';
+      (META.denoms||[]).forEach(d => {
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <label>${Number(d).toFixed(2)} лв – брой</label>
+          <input type="number" min="0" step="1" data-denom="${d}" value="0" oninput="setDeclared()" />
+        `;
+        wrap.appendChild(div);
+      });
+      setDeclared();
     }
 
+    /* ===== CRUD ===== */
+    function addTxUI(){
+      const btn = byId('btn_add');
+      btn.disabled = true;
+      const payload = {
+        date: byId('date').value || today(),
+        store: byId('store').value,
+        type: byId('tx_type').value,
+        method: byId('tx_method').value,
+        category: byId('tx_category').value,
+        description: byId('tx_desc').value,
+        amount: Number(byId('tx_amount').value||0)
+      };
+      if(payload.type === 'EXPENSE'){
+        payload.supplier   = byId('tx_supplier').value;
+        payload.doc_type   = byId('tx_doc_type').value;
+        payload.doc_number = byId('tx_doc_number').value;
+        payload.doc_date   = byId('tx_doc_date').value || today();
+      }
+      google.script.run.withSuccessHandler(()=>{
+        byId('tx_amount').value=''; byId('tx_desc').value='';
+        refreshAllUI();
+        btn.disabled = false;
+      }).withFailureHandler(err=>{ alert(err.message||err); btn.disabled=false; }).addTransaction(payload);
+    }
+
+    function saveCountUI(){
+      const counts = {};
+      document.querySelectorAll('[data-denom]').forEach(b=>{
+        counts[b.dataset.denom] = Number(b.value||0);
+      });
+      const payload = { date: byId('date').value || today(), store: byId('store').value, counts };
+      google.script.run.withSuccessHandler(res=>{
+        byId('declared').textContent = money(res.total);
+        alert('Броенето е записано.');
+      }).withFailureHandler(err=> alert(err.message||err)).saveCashCount(payload);
+    }
+
+    function closeDayUI(){
+      const declared = Number(byId('declared').textContent.replace(',','.'))||0;
+      const payload = {
+        date: byId('date').value || today(),
+        store: byId('store').value,
+        declaredCash: declared,
+        note: byId('close_note').value
+      };
+      google.script.run.withSuccessHandler(res=>{
+        const diffCls = res.diff === 0 ? 'ok' : 'bad';
+        byId('close_result').innerHTML = `
+          <div>Очаквани пари в каса: <b>${money(res.expectedCash)}</b> лв</div>
+          <div>Декларирани пари в каса: <b>${money(res.declared)}</b> лв</div>
+          <div>Разлика: <b class="${diffCls}">${money(res.diff)}</b> лв</div>
+        `;
+        refreshAllUI();
+      }).withFailureHandler(err=> alert(err.message||err)).closeDay(payload);
+    }
+
+    /* ===== Reports ===== */
+    function initReportFilters(){
+      if(!META){ google.script.run.withSuccessHandler(m=>{ META=m; initReportFilters(); }).getMeta(); return; }
+      const s = byId('rep_store');
+      const stores = Array.isArray(META.stores) ? META.stores : [];
+      s.innerHTML = '<option value="">Всички</option>' + stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      setAllDatesToToday();
+    }
+    function generateReportUI(){
+      const from  = byId('rep_from').value || today();
+      const to    = byId('rep_to').value   || today();
+      const store = byId('rep_store').value || '';
+      const q = { dateFrom: from, dateTo: to, store };
+      byId('rep_kpi').innerHTML = '<div class="card">Зареждане...</div>';
+      google.script.run
+        .withSuccessHandler(drawReport)
+        .withFailureHandler(err=>{
+          alert('Грешка при генериране на справка: ' + (err && err.message ? err.message : err));
+          byId('rep_kpi').innerHTML = '<div class="card">Грешка</div>';
+        })
+        .api_getReportV2(q);
+    }
     function drawReport(r){
       const kpiEl = byId('rep_kpi');
       const tblM = byId('rep_tbl_method');
@@ -523,73 +553,215 @@
       const tblClose = byId('rep_tbl_closings');
       const recent = byId('rep_recent_rows');
 
-      if(!r){
-        kpiEl.innerHTML = tblM.innerHTML = tblCI.innerHTML = tblCE.innerHTML = tblDoc.innerHTML = tblSup.innerHTML = tblClose.innerHTML = '';
-        recent.innerHTML = '';
-        alert('Няма данни за справка');
-        return;
-      }
-
+      r = r || {};
       const k = r.kpi || {income_total:0,expense_total:0,net:0,tx_count:0};
+      const m = n => (Number(String(n??0).replace(',','.'))||0).toFixed(2);
+      const safe = a => Array.isArray(a) ? a : [];
+
       kpiEl.innerHTML = [
         {label:'Общ приход',v:k.income_total},
         {label:'Общ разход',v:k.expense_total},
         {label:'Нето',v:k.net},
         {label:'Брой операции',v:k.tx_count}
-      ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${money(p.v)}</span></div></div>`).join('');
+      ].map(p=>`<div class="card"><div class="stat"><span>${p.label}:</span><span class="v">${m(p.v)} лв</span></div></div>`).join('');
 
-      const methods = (r.byMethod||[]).map(m=>`<tr><td>${m.method}</td><td>${money(m.income)}</td><td>${money(m.expense)}</td></tr>`).join('');
-      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>' + methods;
+      tblM.innerHTML = '<tr><th>Метод</th><th>Приход</th><th>Разход</th></tr>';
+      safe(r.byMethod).forEach(x => { tblM.innerHTML += `<tr><td>${x.method||''}</td><td>${m(x.income)} лв</td><td>${m(x.expense)} лв</td></tr>`; });
 
-      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        (r.byCatIncome||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+      tblCI.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>';
+      safe(r.byCatIncome).forEach(c => { tblCI.innerHTML += `<tr><td>${c.category||'Без категория'}</td><td>${m(c.amount)} лв</td></tr>`; });
 
-      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>' +
-        (r.byCatExpense||[]).map(c=>`<tr><td>${c.category}</td><td>${money(c.amount)}</td></tr>`).join('');
+      tblCE.innerHTML = '<tr><th>Категория</th><th>Сума</th></tr>';
+      safe(r.byCatExpense).forEach(c => { tblCE.innerHTML += `<tr><td>${c.category||'Без категория'}</td><td>${m(c.amount)} лв</td></tr>`; });
 
-      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>' +
-        (r.expenseByDocType||[]).map(d=>`<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type}</td><td>${money(d.amount)}</td><td>${d.count}</td></tr>`).join('');
+      tblDoc.innerHTML = '<tr><th>Тип документ</th><th>Сума</th><th>Брой</th></tr>';
+      safe(r.expenseByDocType).forEach(d => { tblDoc.innerHTML += `<tr><td>${DOC_LABEL[d.doc_type]||d.doc_type||'Неизвестен'}</td><td>${m(d.amount)} лв</td><td>${d.count||0}</td></tr>`; });
 
-      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>' +
-        (r.suppliersTop||[]).map(s=>`<tr><td>${s.supplier}</td><td>${money(s.amount)}</td><td>${s.count}</td></tr>`).join('');
+      tblSup.innerHTML = '<tr><th>Доставчик</th><th>Сума</th><th>Брой</th></tr>';
+      safe(r.suppliersTop).forEach(s => { tblSup.innerHTML += `<tr><td>${s.supplier||'Неизвестен'}</td><td>${m(s.amount)} лв</td><td>${s.count||0}</td></tr>`; });
 
-      tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин </th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>' +
-        (r.closings||[]).map(c=>`<tr><td>${c.date}</td><td>${c.store}</td><td>${money(c.sales_cash)}</td><td>${money(c.sales_card)}</td><td>${money(c.sales_bank)}</td><td>${money(c.expenses_cash)}</td><td>${money(c.expenses_card)}</td><td>${money(c.expenses_bank)}</td><td>${money(c.declared_cash)}</td><td>${money(c.expected_cash)}</td><td>${money(c.diff)}</td></tr>`).join('');
+      tblClose.innerHTML = '<tr><th>Дата</th><th>Магазин</th><th>Прод. каса</th><th>Прод. карта</th><th>Прод. банка</th><th>Разх. каса</th><th>Разх. карта</th><th>Разх. банка</th><th>Декл. каса</th><th>Очакв. каса</th><th>Разлика</th></tr>';
+      safe(r.closings).forEach(c => {
+        tblClose.innerHTML += `<tr>
+          <td>${c.date||''}</td>
+          <td>${c.store||''}</td>
+          <td>${m(c.sales_cash)}</td>
+          <td>${m(c.sales_card)}</td>
+          <td>${m(c.sales_bank)}</td>
+          <td>${m(c.expenses_cash)}</td>
+          <td>${m(c.expenses_card)}</td>
+          <td>${m(c.expenses_bank)}</td>
+          <td>${m(c.declared_cash)}</td>
+          <td>${m(c.expected_cash)}</td>
+          <td>${m(c.diff)}</td>
+        </tr>`;
+      });
 
-      recent.innerHTML = (r.recentTx||[]).map(t=>`<tr>
-        <td>${t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : ''}</td>
-        <td>${t.date||''}</td>
-        <td>${t.store||''}</td>
-        <td>${t.type||''}</td>
-        <td>${t.method||''}</td>
-        <td>${t.category||''}</td>
-        <td>${t.description||''}</td>
-        <td>${money(t.amount)}</td>
-        <td class="muted">${t.user||''}</td>
-        <td>${t.supplier||''}</td>
-        <td>${t.doc_type ? (DOC_LABEL[t.doc_type]||t.doc_type) : ''}</td>
-        <td>${t.doc_number||''}</td>
-        <td>${t.doc_date||''}</td>
-        <td>${t.doc_file_id||''}</td>
-        <td>${t.doc_file_url ? `<a href="${t.doc_file_url}" target="_blank">линк</a>` : ''}</td>
-      </tr>`).join('');
+      recent.innerHTML = '';
+      safe(r.recentTx).forEach(t => {
+        recent.innerHTML += `<tr>
+          <td>${t.timestamp ? new Date(t.timestamp).toLocaleTimeString('bg-BG') : ''}</td>
+          <td>${t.date||''}</td>
+          <td>${t.store||''}</td>
+          <td>${t.type==='INCOME'?'Приход':'Разход'}</td>
+          <td>${t.method||''}</td>
+          <td>${t.category||''}</td>
+          <td>${t.description||''}</td>
+          <td>${m(t.amount)}</td>
+          <td class="muted">${t.user||''}</td>
+          <td>${t.supplier||''}</td>
+          <td>${t.doc_type ? (DOC_LABEL[t.doc_type]||t.doc_type) : ''}</td>
+          <td>${t.doc_number||''}</td>
+          <td>${t.doc_date||''}</td>
+          <td>${t.doc_file_id||''}</td>
+          <td>${t.doc_file_url ? `<a href="${t.doc_file_url}" target="_blank">линк</a>` : ''}</td>
+        </tr>`;
+      });
     }
 
-    // boot с „сървърно днес“
-    google.script.run.withSuccessHandler(server=>{
-      const dkey = server && server.dateKey ? server.dateKey : today(); // fallback
-      // попълваме всички дати със server.dateKey
-      byId('date').value    = dkey;
-      byId('tx_from').value = dkey;
-      byId('tx_to').value   = dkey;
-      byId('rep_from').value= dkey;
-      byId('rep_to').value  = dkey;
+    function exportReportUI(){
+      const q = { dateFrom: byId('rep_from').value||today(), dateTo: byId('rep_to').value||today(), store: byId('rep_store').value || '' };
+      google.script.run.withSuccessHandler(blob=>{
+        const url = 'data:text/csv;charset=utf-8,' + encodeURIComponent(blob.getDataAsString());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.getName();
+        document.body.appendChild(a); a.click(); a.remove();
+      }).withFailureHandler(err=>alert(err.message||err)).exportReportCsvV2(q);
+    }
 
-      // после META и останалото
+    /* ===== INIT ===== */
+    function fillMeta(meta){
+      META = meta;
+      byId('store').innerHTML = META.stores.map(v=>`<option value="${v}">${v}</option>`).join('');
+      byId('tx_method').innerHTML = META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
+      fillDocTypes();
+      refillCategories();
+      fillDenoms();
+      loadSuppliers();
+      setAllDatesToToday();
+      refreshAllUI();
+      onTypeChange(); // да се синхронизира видимостта
+    }
+    function refreshAllUI(){
+      refreshSummaryOnlyUI();
+      refreshTxUI();
+    }
+    function openReports(){
+      showTab('reports');
+      initReportFilters();
+    }
+    function showTab(name){
+      byId('tab_main').style.display = name==='main'?'block':'none';
+      byId('tab_reports').style.display = name==='reports'?'block':'none';
+    }
+
+    window.addEventListener('load', function(){
+      setAllDatesToToday();
       google.script.run.withSuccessHandler(fillMeta).getMeta();
-    }).getServerNow();
+    });
 
-    byId('tx_type').addEventListener('change', onTypeChange);
+    /* ===== Модал „Нов доставчик“ ===== */
+    function openSupplierModal(){ byId('modal_supplier').style.display = 'flex'; }
+    function closeSupplierModal(){ byId('modal_supplier').style.display = 'none'; byId('new_supplier_name').value=''; }
+    function modalBgClose(e){ if(e.target && e.target.id==='modal_supplier') closeSupplierModal(); }
+
+    function createSupplierUI(){
+      const name = (byId('new_supplier_name').value||'').trim();
+      if(!name){ alert('Моля, въведете име на доставчик'); return; }
+      google.script.run
+        .withSuccessHandler(()=>{
+          alert('Доставчикът е добавен успешно!');
+          closeSupplierModal();
+          loadSuppliers();
+        })
+        .withFailureHandler(err => { alert('Грешка при добавяне на доставчик: ' + (err.message || err)); })
+        .addSupplier(name);
+    }
+    function loadSuppliers(){
+      google.script.run
+        .withSuccessHandler(suppliers=>{
+          const select = byId('tx_supplier');
+          select.innerHTML = suppliers.map(s => `<option value="${s}">${s}</option>`).join('');
+        })
+        .withFailureHandler(err => { console.error('Грешка при зареждане на доставчици:', err); })
+        .listSuppliers();
+    }
+
+    /* ===== Филтри за „Последни операции“ ===== */
+    function fillTxFilterSources(){
+      // method
+      const mSel = byId('f_method');
+      if (mSel && META?.methods){
+        const cur = mSel.value || '';
+        mSel.innerHTML = '<option value="">Всички</option>' + META.methods.map(v=>`<option value="${v}">${v}</option>`).join('');
+        mSel.value = cur;
+      }
+      // suppliers
+      const sSel = byId('f_supplier');
+      if (sSel){
+        const cur = sSel.value || '';
+        const uniq = Array.from(new Set((TX_ALL||[]).map(x=>x.supplier).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'bg'));
+        sSel.innerHTML = '<option value="">Всички</option>' + uniq.map(v=>`<option value="${v}">${v}</option>`).join('');
+        sSel.value = cur;
+      }
+      // doc types
+      const dSel = byId('f_doc_type');
+      if (dSel){
+        const cur = dSel.value || '';
+        dSel.innerHTML = '<option value="">Всички</option>' + (DOC_TYPES||[]).map(d=>`<option value="${d.v}">${d.label}</option>`).join('');
+        dSel.value = cur;
+      }
+    }
+    function val(id){ const el = byId(id); return el ? String(el.value||'').trim() : ''; }
+    function num(id){ const v = val(id).replace(',','.'); return v ? Number(v) : null; }
+    function containsCI(hay, needle){ return !needle || String(hay||'').toLowerCase().includes(String(needle).toLowerCase()); }
+
+    function applyTxFilters(){
+      let list = TX_ALL.slice();
+      const f = {
+        date: val('f_date'),
+        store: val('f_store'),
+        type: val('f_type'),
+        method: val('f_method'),
+        category: val('f_category'),
+        desc: val('f_desc'),
+        min: num('f_amount_min'),
+        max: num('f_amount_max'),
+        user: val('f_user'),
+        supplier: val('f_supplier'),
+        docType: val('f_doc_type'),
+        docNumber: val('f_doc_number'),
+        docDate: val('f_doc_date'),
+        fileId: val('f_file_id'),
+        fileUrl: val('f_file_url'),
+      };
+      list = list.filter(r=>{
+        if (f.date && String(r.date||'').indexOf(f.date) === -1) return false;
+        if (f.store && !containsCI(r.store, f.store)) return false;
+        if (f.type && String(r.type||'') !== f.type) return false;
+        if (f.method && String(r.method||'') !== f.method) return false;
+        if (f.category && !containsCI(r.category, f.category)) return false;
+        if (f.desc && !containsCI(r.description, f.desc)) return false;
+        const amt = Number(r.amount)||0;
+        if (f.min!=null && amt < f.min) return false;
+        if (f.max!=null && amt > f.max) return false;
+        if (f.user && !containsCI(r.user, f.user)) return false;
+        if (f.supplier && String(r.supplier||'') !== f.supplier) return false;
+        if (f.docType && String(r.doc_type||'') !== f.docType) return false;
+        if (f.docNumber && !containsCI(r.doc_number, f.docNumber)) return false;
+        if (f.docDate && String(r.doc_date||'').indexOf(f.docDate) === -1) return false;
+        if (f.fileId && !containsCI(r.doc_file_id, f.fileId)) return false;
+        if (f.fileUrl && !containsCI(r.doc_file_url, f.fileUrl)) return false;
+        return true;
+      });
+      renderTx(list);
+    }
+    function clearTxFilters(){
+      ['f_date','f_store','f_type','f_method','f_category','f_desc','f_amount_min','f_amount_max','f_user','f_supplier','f_doc_type','f_doc_number','f_doc_date','f_file_id','f_file_url']
+        .forEach(id=>{ const el = byId(id); if (el) el.value=''; });
+      applyTxFilters();
+    }
   </script>
 </body>
 </html>
