@@ -1,258 +1,518 @@
-/** ===================== CONFIG ===================== **/
+/**************************************************
+ * CONFIG
+ **************************************************/
 const TZ      = 'Europe/Sofia';
-const SS      = SpreadsheetApp.getActive();
-const SS_ID   = SS.getId();
+const SS_ID   = SpreadsheetApp.getActive().getId();
 
-const SH_USERS   = 'Users';       // A:Name, B:Email, C:PasswordHash
-const SH_PANELS  = 'Panels';      // A:Key,  B:Title, C:Visible (TRUE/FALSE)
-const SH_LOG     = 'AuditLog';    // A:Timestamp, B:Email, C:Action, D:Details
-const SH_TX      = 'Transactions';// Динамични колони по твоя header
+const SH_TX   = 'Transactions';
+const SH_CNT  = 'CashCounts';
+const SH_DAY  = 'DayClosings';
+const SH_SET  = 'Settings';
+const SH_USERS= 'Users';
+const SH_SUP  = 'Suppliers';
 
-/** ===================== INIT ===================== **/
-function ensureSheets_() {
-  const need = [
-    [SH_USERS,  ['Name','Email','PasswordHash']],
-    [SH_PANELS, ['PanelKey','Title','Visible']],
-    [SH_LOG,    ['Timestamp','Email','Action','Details']],
-    [SH_TX,     ['Date','Type','Amount','Method','Supplier','Note','DocType','DocNo']] // примерен header; ако имаш твой, скриптът ще го чете динамично
-  ];
-  need.forEach(([name, header])=>{
-    let sh = SS.getSheetByName(name);
-    if (!sh) {
-      sh = SS.insertSheet(name);
-      sh.getRange(1,1,1,header.length).setValues([header]);
-    } else {
-      // гарантирай, че има заглавен ред
-      if (sh.getLastRow() === 0) {
-        sh.getRange(1,1,1,header.length).setValues([header]);
+const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
+const DEFAULT_METHODS = ['CASH','CARD','BANK'];
+const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
+const DOC_TYPES = [
+  'INVOICE','CREDIT_NOTE','DEBIT_NOTE','DELIVERY_NOTE','FISCAL_RECEIPT',
+  'CASH_VOUCHER_OUT','BANK_PAYMENT','BANK_FEE','VAT_PROTOCOL','RECEIPT','CONTRACT','OTHER'
+];
+
+let TX_COLS = {};
+
+/**************************************************
+ * WEB APP & MENU
+ **************************************************/
+function onOpen(){
+  ensureSheets_();
+  SpreadsheetApp.getUi()
+    .createMenu('Отчитане')
+    .addItem('Отвори приложението', 'showWebApp_')
+    .addToUi();
+}
+function showWebApp_(){
+  const html = HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Отчитане на магазин')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setWidth(1200)
+    .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
+}
+function doGet(){
+  ensureSheets_();
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Отчитане на магазин')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**************************************************
+ * PUBLIC API
+ **************************************************/
+function listSuppliers(){
+  ensureSheets_();
+  const sh = getSheet_(SH_SUP);
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const names = sh.getRange(2,1,last-1,1).getValues()
+    .map(r => String(r[0]||'').trim())
+    .filter(Boolean);
+  const uniq = Array.from(new Set(names));
+  uniq.sort((a,b)=> a.localeCompare(b, 'bg', {sensitivity:'base'}));
+  return uniq;
+}
+
+function api_getReportV2(q){
+  try{
+    ensureSheets_();
+    const raw = getReportV2(q || {});
+    return JSON.parse(JSON.stringify(raw || defaultReport_()));
+  }catch(e){
+    throw new Error('getReportV2 failed: ' + (e && e.message ? e.message : e));
+  }
+}
+
+function getMeta(){
+  ensureSheets_();
+  return {
+    denoms: getExistingOrDefaultDenoms_(),
+    methods: DEFAULT_METHODS.slice(),
+    types: DEFAULT_TYPES.slice(),
+    stores: ['Основен'],
+    categories: {
+      INCOME: ['Продажби', 'Друг приход'],
+      EXPENSE: ['Стока', 'Наем', 'Комунални', 'Касови разходи', 'Друго']
+    }
+  };
+}
+
+function listTransactions(query){
+  ensureSheets_();
+  const sh = getSheet_(SH_TX);
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+
+  const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  const cols = TX_COLS;
+
+  const toNum_ = v => Number(String(v||0).replace(',','.')) || 0;
+
+  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
+  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const store = query?.store ? String(query.store) : null;
+
+  const dkIdx = (typeof cols.dateKey === 'number') ? cols.dateKey : cols.date;
+
+  let rows = data.filter(r => {
+    let dkey = r[dkIdx];
+    if (dkey instanceof Date) dkey = toDateOnly_(dkey);
+    else dkey = String(dkey || '').slice(0,10);
+
+    if (df && dkey < df) return false;
+    if (dt && dkey > dt) return false;
+    if (store && cols.store !== undefined && String(r[cols.store]||'') !== store) return false;
+    return true;
+  });
+
+  const getTime = v => (v instanceof Date) ? v.getTime() : (new Date(v).getTime() || 0);
+  rows.sort((a,b)=> getTime(b[cols.timestamp]) - getTime(a[cols.timestamp]));
+
+  const lim = Math.min(Number(query?.limit||200), 1000);
+  rows = rows.slice(0, lim);
+
+  const iso = v => {
+    if (!v) return '';
+    const d = (v instanceof Date) ? v : new Date(v);
+    if (isNaN(d.getTime())) return '';
+    return Utilities.formatDate(d, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
+  };
+  const dateOnly = v => (v ? toDateOnly_(v) : '');
+
+  return rows.map(r=>({
+    timestamp: iso(r[cols.timestamp]),
+    date: dateOnly(r[cols.date]),
+    store: cols.store!==undefined ? String(r[cols.store]||'') : '',
+    type: String(r[cols.type]||''),
+    method: String(r[cols.method]||''),
+    category: cols.category!==undefined ? String(r[cols.category]||'') : '',
+    description: cols.description!==undefined ? String(r[cols.description]||'') : '',
+    amount: toNum_(r[cols.amount]),
+    user: cols.user!==undefined ? String(r[cols.user]||'') : '',
+    supplier: cols.supplier!==undefined ? String(r[cols.supplier]||'') : '',
+    doc_type: cols.doc_type!==undefined ? String(r[cols.doc_type]||'') : '',
+    doc_number: cols.doc_number!==undefined ? String(r[cols.doc_number]||'') : '',
+    doc_date: cols.doc_date!==undefined ? dateOnly(r[cols.doc_date]) : '',
+    doc_file_id: cols.doc_file_id!==undefined ? String(r[cols.doc_file_id]||'') : '',
+    doc_file_url: cols.doc_file_url!==undefined ? String(r[cols.doc_file_url]||'') : ''
+  }));
+}
+
+function addSupplier(name){
+  ensureSheets_();
+  let n = String(name||'').trim().replace(/\s+/g,' ');
+  if(n.length < 2) throw new Error('Невалидно име на доставчик');
+  const sh = getSheet_(SH_SUP);
+  const last = sh.getLastRow();
+  const existing = last < 2 ? [] : sh.getRange(2,1,last-1,1).getValues().map(r=>String(r[0]||'').toLowerCase());
+  if(existing.includes(n.toLowerCase())) throw new Error('Доставчик вече съществува');
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+  sh.appendRow([n, new Date(), user]);
+  return {ok:true};
+}
+
+function addTransaction(payload){
+  ensureSheets_();
+  const required = ['date','type','method','amount'];
+  required.forEach(k=>{
+    if(payload[k] === undefined || payload[k] === null || payload[k] === '') throw new Error('Липсва поле: '+k);
+  });
+
+  const type = String(payload.type||'').toUpperCase();
+  if(!DEFAULT_TYPES.includes(type)) throw new Error('Невалиден тип (INCOME/EXPENSE)');
+
+  const method = String(payload.method||'').toUpperCase();
+  if(!getMeta().methods.includes(method)) throw new Error('Невалиден метод на плащане');
+
+  let amount = Number(String(payload.amount).replace(',','.'));
+  if(isNaN(amount)) throw new Error('Сумата не е число');
+
+  const dateOnly = toDateOnly_(payload.date);
+  if(!dateOnly) throw new Error('Невалидна дата');
+  const dateKey = String(dateOnly);
+
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+  const store = payload.store || 'Основен';
+
+  let supplier = payload.supplier || '';
+  let docType = payload.doc_type || '';
+  let docNumber = payload.doc_number || '';
+  let docDate = payload.doc_date ? toDateOnly_(payload.doc_date) : '';
+  let docFileId = payload.doc_file_id || '';
+  let docFileUrl = payload.doc_file_url || '';
+
+  if(type === 'EXPENSE'){
+    supplier = String(supplier||'').trim();
+    if(!supplier) throw new Error('Доставчикът е задължителен');
+    docType = String(docType||'').toUpperCase();
+    if(!DOC_TYPES.includes(docType)) throw new Error('Невалиден тип документ');
+    if(['INVOICE','CREDIT_NOTE','DEBIT_NOTE','VAT_PROTOCOL'].includes(docType)){
+      if(!docNumber) throw new Error('Липсва номер на документ');
+    }
+    if(!docDate) throw new Error('Липсва дата на документа');
+    if(docDate > toDateOnly_(new Date())) throw new Error('Дата на документа е в бъдещето');
+    if(docType === 'CREDIT_NOTE') amount = -Math.abs(amount);
+  }
+
+  const cols = TX_COLS;
+  const row = new Array(Math.max(16, Object.keys(cols).length)).fill('');
+  row[cols.timestamp]    = new Date();
+  row[cols.date]         = dateOnly;
+  if(cols.dateKey !== undefined) row[cols.dateKey] = dateKey;
+  if(cols.store       !== undefined) row[cols.store]       = store;
+  row[cols.type]         = type;
+  row[cols.method]       = method;
+  row[cols.category]     = payload.category || '';
+  row[cols.description]  = payload.description || '';
+  row[cols.amount]       = round2_(amount);
+  row[cols.user]         = user;
+  if(cols.supplier     !== undefined) row[cols.supplier]     = supplier;
+  if(cols.doc_type     !== undefined) row[cols.doc_type]     = docType;
+  if(cols.doc_number   !== undefined) row[cols.doc_number]   = docNumber;
+  if(cols.doc_date     !== undefined) row[cols.doc_date]     = docDate;
+  if(cols.doc_file_id  !== undefined) row[cols.doc_file_id]  = docFileId;
+  if(cols.doc_file_url !== undefined) row[cols.doc_file_url] = docFileUrl;
+
+  const sh = getSheet_(SH_TX);
+  sh.appendRow(row);
+  return {ok:true};
+}
+
+function getReportV2(query){
+  const tx = listTransactions({dateFrom: query?.dateFrom, dateTo: query?.dateTo, store: query?.store, limit: 1000});
+
+  const kpi = {income_total:0, expense_total:0, net:0, tx_count:tx.length};
+  const byMethod = {};
+  const byCatIncome = {};
+  const byCatExpense = {};
+  const expenseByDocType = {};
+  const suppliersTop = {};
+
+  tx.forEach(t => {
+    const amt = Number(t.amount)||0;
+
+    if(t.type === 'INCOME') kpi.income_total += amt;
+    else if(t.type === 'EXPENSE') kpi.expense_total += amt;
+
+    if(!byMethod[t.method]) byMethod[t.method] = {income:0, expense:0};
+    if(t.type === 'INCOME') byMethod[t.method].income += amt;
+    else if(t.type === 'EXPENSE') byMethod[t.method].expense += amt;
+
+    if(t.type === 'INCOME'){
+      if(!byCatIncome[t.category]) byCatIncome[t.category] = 0;
+      byCatIncome[t.category] += amt;
+    } else if(t.type === 'EXPENSE'){
+      if(!byCatExpense[t.category]) byCatExpense[t.category] = 0;
+      byCatExpense[t.category] += amt;
+
+      if(!expenseByDocType[t.doc_type]) expenseByDocType[t.doc_type] = {amount:0, count:0};
+      expenseByDocType[t.doc_type].amount += amt;
+      expenseByDocType[t.doc_type].count++;
+
+      if(t.supplier){
+        if(!suppliersTop[t.supplier]) suppliersTop[t.supplier] = {amount:0, count:0};
+        suppliersTop[t.supplier].amount += amt;
+        suppliersTop[t.supplier].count++;
       }
     }
   });
-  // Ако Panels е празен – сложи примерни панели
-  const pSh = SS.getSheetByName(SH_PANELS);
-  if (pSh.getLastRow() < 2) {
-    const rows = [
-      ['dashboard','Табло', true],
-      ['users','Потребители', true],
-      ['panels','Панели', true],
-      ['transactions','Транзакции', true],
-      ['logs','Логове', true]
-    ];
-    pSh.getRange(2,1,rows.length,3).setValues(rows);
-  }
-}
-ensureSheets_();
 
-/** ===================== HTML ENTRY ===================== **/
-function doGet(e) {
-  const t = HtmlService.createTemplateFromFile('Index');
-  t.appName = 'Админ панел';
-  return t.evaluate()
-    .setTitle('Admin')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .setSandboxMode(HtmlService.SandboxMode.IFRAME);
+  kpi.net = kpi.income_total - kpi.expense_total;
+
+  const byMethodArr = Object.keys(byMethod).map(m=>({method:m, ...byMethod[m]}));
+  const byCatIncomeArr = Object.keys(byCatIncome).map(c=>({category:c, amount:byCatIncome[c]}));
+  const byCatExpenseArr = Object.keys(byCatExpense).map(c=>({category:c, amount:byCatExpense[c]}));
+  const expenseByDocTypeArr = Object.keys(expenseByDocType).map(d=>({doc_type:d, ...expenseByDocType[d]}));
+  const suppliersTopArr = Object.keys(suppliersTop).map(s=>({supplier:s, ...suppliersTop[s]})).sort((a,b)=>b.amount-a.amount);
+
+  const closings = listClosings_({dateFrom: query?.dateFrom, dateTo: query?.dateTo, store: query?.store});
+
+  return {
+    kpi,
+    byMethod: byMethodArr,
+    byCatIncome: byCatIncomeArr,
+    byCatExpense: byCatExpenseArr,
+    expenseByDocType: expenseByDocTypeArr,
+    suppliersTop: suppliersTopArr,
+    closings,
+    recentTx: tx
+  };
 }
 
-function include_(name){ return HtmlService.createHtmlOutputFromFile(name).getContent(); }
+function listClosings_(query){
+  ensureSheets_();
+  const sh = getSheet_(SH_DAY);
+  const last = sh.getLastRow();
+  if (last < 2) return [];
 
-/** ===================== UTILS ===================== **/
-function sha256_(s) {
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
-  return bytes.map(b => ('0'+(b & 0xFF).toString(16)).slice(-2)).join('');
+  const data = sh.getRange(2,1,last-1,sh.getLastColumn()).getValues();
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  const cols = {}; headers.forEach((h,i)=> cols[String(h)] = i);
+
+  const df = query?.dateFrom ? toDateOnly_(query.dateFrom) : null;
+  const dt = query?.dateTo   ? toDateOnly_(query.dateTo)   : null;
+  const store = query?.store ? String(query.store) : null;
+
+  const toNum_ = v => Number(String(v||0).replace(',','.')) || 0;
+
+  const rows = data.filter(r => {
+    const d = toDateOnly_(r[cols.date]);
+    if (!d) return false;
+    if (df && d < df) return false;
+    if (dt && d > dt) return false;
+    if (store && String(r[cols.store]||'') !== store) return false;
+    return true;
+  });
+
+  return rows.map(r=>({
+    date: toDateOnly_(r[cols.date]) || '',
+    store: String(r[cols.store]||''),
+    sales_cash: toNum_(r[cols.sales_cash]),
+    sales_card: toNum_(r[cols.sales_card]),
+    sales_bank: toNum_(r[cols.sales_bank]),
+    expenses_cash: toNum_(r[cols.expenses_cash]),
+    expenses_card: toNum_(r[cols.expenses_card]),
+    expenses_bank: toNum_(r[cols.expenses_bank]),
+    declared_cash: toNum_(r[cols.declared_cash]),
+    expected_cash: toNum_(r[cols.expected_cash]),
+    diff: toNum_(r[cols.diff])
+  }));
 }
 
-function nowStr_() {
-  return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss');
+function exportReportCsvV2(query){
+  const tx = listTransactions({dateFrom: query?.dateFrom, dateTo: query?.dateTo, store: query?.store, limit: 1000});
+  const header = ['timestamp','date','store','type','method','category','description','amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'];
+  const rows = tx.map(t => [t.timestamp, t.date, t.store, t.type, t.method, t.category, t.description, t.amount, t.user, t.supplier, t.doc_type, t.doc_number, t.doc_date, t.doc_file_id, t.doc_file_url]);
+  const csv = [header.join(','), ...rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','))].join('\n');
+  return Utilities.newBlob(csv, 'text/csv', 'transactions.csv');
 }
 
-function log_(email, action, details) {
-  const sh = SS.getSheetByName(SH_LOG);
-  sh.appendRow([nowStr_(), email || '', action || '', details || '']);
+function saveCashCount(payload){
+  ensureSheets_();
+  const meta = getMeta();
+  const sh = getSheet_(SH_CNT);
+  const dateOnly = toDateOnly_(payload.date);
+  const store = payload.store || 'Основен';
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+
+  const denoms = meta.denoms;
+  let total = 0;
+  const qtys = denoms.map(d => {
+    const q = Number(payload.counts?.[String(d)]||0);
+    total += d * q;
+    return q;
+  });
+
+  sh.appendRow([ new Date(), dateOnly, store, ...qtys, round2_(total), user ]);
+  return {ok:true, total: round2_(total)};
 }
 
-/** ===================== AUTH ===================== **/
-/**
- * В лист Users:
- *  A: Name
- *  B: Email
- *  C: PasswordHash  (ако някой е въвел чист текст — няма да съвпадне; препоръчва се през UI да се добавят/редактират)
- */
-function login(email, password) {
-  if (!email || !password) throw new Error('Липсват email/парола.');
-  const sh = SS.getSheetByName(SH_USERS);
-  const values = sh.getDataRange().getValues();
-  const header = values.shift(); // remove header
-  const hash = sha256_(password);
-  let user = null;
-  values.forEach(row=>{
-    const e = String(row[1]||'').trim().toLowerCase();
-    const h = String(row[2]||'').trim();
-    if (e && e === String(email).toLowerCase()) {
-      // приемаме или точен hash, или (backward-compat) чист текст, равен на password
-      if (h && h.length === 64 && h === hash) user = {name: row[0], email: e};
-      else if (h && h === password)           user = {name: row[0], email: e}; // ако в C е чист текст (не препоръчваме)
+function getDailySummary(date, store){
+  ensureSheets_();
+  const dateOnly = toDateOnly_(date);
+  const tx = listTransactions({dateFrom: dateOnly, dateTo: dateOnly, store: store, limit: 5000});
+  const methods = getMeta().methods;
+  const sum = { sales:{}, expenses:{}, total:{ sales:0, expenses:0 } };
+  methods.forEach(m=>{ sum.sales[m]=0; sum.expenses[m]=0; });
+
+  tx.forEach(t => {
+    if(t.type === 'INCOME'){
+      sum.sales[t.method] += Number(t.amount)||0;
+      sum.total.sales += Number(t.amount)||0;
+    }else if(t.type === 'EXPENSE'){
+      sum.expenses[t.method] += Number(t.amount)||0;
+      sum.total.expenses += Number(t.amount)||0;
     }
   });
-  if (!user) throw new Error('Невалидни данни за вход.');
-  // Създай еднократен токен (кратко живущ) - запис в Cache 15 мин
-  const token = Utilities.getUuid();
-  CacheService.getScriptCache().put(`sess_${token}`, user.email, 60*15);
-  log_(user.email, 'LOGIN', 'Успешен вход');
-  return { token, user };
+
+  const expectedCash = round2_( (sum.sales.CASH||0) - (sum.expenses.CASH||0) );
+  return {date: dateOnly, store: store||'Основен', ...sum, expectedCash};
 }
 
-function logout(token, email) {
-  if (token) CacheService.getScriptCache().remove(`sess_${token}`);
-  log_(email||'', 'LOGOUT', 'Изход');
-  return true;
+function closeDay(payload) {
+  ensureSheets_();
+  const dateOnly = toDateOnly_(payload.date);
+  const store = payload.store || 'Основен';
+  const declared = round2_(Number(payload.declaredCash) || 0);
+  const note = String(payload.note || '');
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+
+  const sCum = getCumulativeSummary(dateOnly, store);
+  const expectedCash = round2_(sCum.expectedCash);
+  const diff = round2_(declared - expectedCash);
+
+  const sh = getSheet_(SH_DAY);
+  sh.appendRow([
+    new Date(),
+    dateOnly,
+    store,
+    round2_(sCum.sales.CASH || 0),
+    round2_(sCum.sales.CARD || 0),
+    round2_(sCum.sales.BANK || 0),
+    round2_(sCum.expenses.CASH || 0),
+    round2_(sCum.expenses.CARD || 0),
+    round2_(sCum.expenses.BANK || 0),
+    declared,
+    expectedCash,
+    diff,
+    note,
+    user
+  ]);
+
+  return { ok: true, expectedCash, declared, diff };
 }
 
-function assertAuth_(token) {
-  const email = CacheService.getScriptCache().get(`sess_${token}`);
-  if (!email) throw new Error('Сесията е изтекла. Влез отново.');
-  return email;
-}
+function getCumulativeSummary(dateTo, store) {
+  ensureSheets_();
+  const dt = toDateOnly_(dateTo) || toDateOnly_(new Date());
+  const tx = listTransactions({ dateTo: dt, store: store || '', limit: 500000 });
+  const methods = getMeta().methods;
 
-/** ===================== USERS CRUD ===================== **/
-function listUsers(token) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_USERS);
-  const values = sh.getDataRange().getValues();
-  const header = values.shift();
-  const rows = values.map((r,i)=>({
-    row: i+2,
-    name: r[0]||'',
-    email: r[1]||'',
-    hasPassword: !!(r[2] && String(r[2]).length>0)
-  }));
-  return rows;
-}
+  const sum = { sales: {}, expenses: {}, total: { sales: 0, expenses: 0 } };
+  methods.forEach(m => { sum.sales[m] = 0; sum.expenses[m] = 0; });
 
-function upsertUser(token, row, name, email, plainPasswordOrEmpty) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_USERS);
-  if (!name || !email) throw new Error('Име и email са задължителни.');
-  // ако row == null → insert
-  let passHash = '';
-  if (plainPasswordOrEmpty) passHash = sha256_(plainPasswordOrEmpty);
-
-  if (row && row>1) {
-    if (passHash) sh.getRange(row,1,1,3).setValues([[name, email, passHash]]);
-    else          sh.getRange(row,1,1,2).setValues([[name, email]]);
-    log_(caller, 'USER_UPDATE', `row=${row}, email=${email}`);
-  } else {
-    const last = sh.getLastRow();
-    const vals = passHash ? [[name,email,passHash]] : [[name,email,'']];
-    sh.getRange(last+1,1,1,3).setValues(vals);
-    log_(caller, 'USER_CREATE', `email=${email}`);
-  }
-  return true;
-}
-
-function deleteUser(token, row, emailForLog) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_USERS);
-  if (!row || row<2) throw new Error('Невалиден ред.');
-  sh.deleteRow(row);
-  log_(caller, 'USER_DELETE', `row=${row}, email=${emailForLog||''}`);
-  return true;
-}
-
-/** ===================== PANELS ===================== **/
-function listPanels(token) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_PANELS);
-  const values = sh.getDataRange().getValues();
-  const header = values.shift();
-  const res = values.map((r,i)=>({
-    row: i+2,
-    key: String(r[0]||''),
-    title: String(r[1]||''),
-    visible: String(r[2]).toLowerCase() === 'true'
-  }));
-  return res;
-}
-
-function setPanelVisibility(token, row, visible) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_PANELS);
-  if (!row || row<2) throw new Error('Невалиден ред.');
-  sh.getRange(row,3).setValue(!!visible);
-  const key = sh.getRange(row,1).getValue();
-  log_(caller, 'PANEL_VISIBILITY', `key=${key}, visible=${!!visible}`);
-  return true;
-}
-
-/** ===================== TRANSACTIONS ===================== **/
-function getTransactions(token, page, pageSize, filters) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_TX);
-  const rng = sh.getDataRange();
-  const values = rng.getValues();
-  if (values.length < 2) {
-    return { header: values[0]||[], rows: [], total: 0, page, pageSize };
-  }
-  const header = values[0];
-  const rows = values.slice(1).map((r,idx)=>{
-    const obj = { _row: idx+2 };
-    header.forEach((h,ci)=> obj[String(h||`C${ci+1}`)] = r[ci]);
-    return obj;
+  tx.forEach(t => {
+    const a = Number(t.amount) || 0;
+    if (t.type === 'INCOME') { sum.sales[t.method] = (sum.sales[t.method] || 0) + a; sum.total.sales += a; }
+    else if (t.type === 'EXPENSE') { sum.expenses[t.method] = (sum.expenses[t.method] || 0) + a; sum.total.expenses += a; }
   });
 
-  // прости филтри (по header име = точен мач)
-  let filtered = rows;
-  if (filters && typeof filters === 'object') {
-    Object.keys(filters).forEach(k=>{
-      const v = filters[k];
-      if (v!=='' && v!=null) {
-        filtered = filtered.filter(row => String(row[k]||'').toLowerCase().indexOf(String(v).toLowerCase()) !== -1);
+  const expectedCash = round2_((sum.sales.CASH || 0) - (sum.expenses.CASH || 0));
+  return { dateTo: dt, store: store || 'Основен', ...sum, expectedCash };
+}
+
+/**************************************************
+ * INTERNALS
+ **************************************************/
+function ensureSheets_(){
+  const ss = SpreadsheetApp.openById(SS_ID);
+
+  // Transactions
+  const txHeader = [
+    'timestamp','date','dateKey','store','type','method','category','description',
+    'amount','user','supplier','doc_type','doc_number','doc_date','doc_file_id','doc_file_url'
+  ];
+  let shTx = ss.getSheetByName(SH_TX);
+  if(!shTx){
+    shTx = ss.insertSheet(SH_TX);
+    shTx.getRange(1,1,1,txHeader.length).setValues([txHeader]);
+    shTx.setFrozenRows(1);
+  }else{
+    const existing = shTx.getLastColumn()>0 ? shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0].map(String) : [];
+    let nextCol = existing.length;
+    txHeader.forEach(h=>{
+      if(!existing.includes(h)){
+        nextCol += 1;
+        shTx.getRange(1,nextCol).setValue(h);
       }
     });
+    if(shTx.getFrozenRows() === 0) shTx.setFrozenRows(1);
   }
+  TX_COLS = {};
+  const header = shTx.getRange(1,1,1,shTx.getLastColumn()).getValues()[0];
+  header.forEach((h,i)=>{ TX_COLS[String(h)] = i; });
 
-  const total = filtered.length;
-  const p = Math.max(1, parseInt(page||1,10));
-  const ps = Math.max(1, parseInt(pageSize||20,10));
-  const start = (p-1)*ps;
-  const slice = filtered.slice(start, start+ps);
-  return { header, rows: slice, total, page: p, pageSize: ps };
+  // CashCounts
+  const denoms = getExistingOrDefaultDenoms_();
+  ensureSheetWithHeader_(ss, SH_CNT, ['timestamp','date','store', ...denoms.map(d=>`qty_${d}`), 'total','user']);
+
+  // DayClosings
+  ensureSheetWithHeader_(ss, SH_DAY, [
+    'timestamp','date','store',
+    'sales_cash','sales_card','sales_bank',
+    'expenses_cash','expenses_card','expenses_bank',
+    'declared_cash','expected_cash','diff','note','user'
+  ]);
+
+  // Settings, Users, Suppliers
+  ensureSheetWithHeader_(ss, SH_SET, ['key','value']);
+  ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
+  ensureSheetWithHeader_(ss, SH_SUP, ['supplier','created_at','created_by']);
 }
-
-function updateTransaction(token, row, changes) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_TX);
+function ensureSheetWithHeader_(ss, name, header){
+  let sh = ss.getSheetByName(name);
+  if(!sh) sh = ss.insertSheet(name);
+  if(sh.getLastRow() === 0){
+    sh.getRange(1,1,1,header.length).setValues([header]);
+    sh.setFrozenRows(1);
+  }
+}
+function getExistingOrDefaultDenoms_(){
+  const ss = SpreadsheetApp.openById(SS_ID);
+  let sh = ss.getSheetByName(SH_CNT);
+  if(!sh || sh.getLastRow() === 0) return DEFAULT_DENOMS.slice();
   const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  if (!row || row<2) throw new Error('Невалиден ред.');
-  if (!changes || typeof changes!=='object') throw new Error('Няма промени.');
-
-  // Прочети целия ред
-  const current = sh.getRange(row,1,1,header.length).getValues()[0];
-  const map = {};
-  header.forEach((h,i)=> map[h] = i);
-
-  // Приложи промените
-  Object.keys(changes).forEach(k=>{
-    if (map.hasOwnProperty(k)) {
-      current[map[k]] = changes[k];
-    }
-  });
-  sh.getRange(row,1,1,header.length).setValues([current]);
-  log_(caller, 'TX_UPDATE', `row=${row}, changes=${JSON.stringify(changes)}`);
-  return true;
+  const cols = header.filter(h => String(h).startsWith('qty_'));
+  if(cols.length === 0) return DEFAULT_DENOMS.slice();
+  return cols.map(c => Number(String(c).replace('qty_','')) );
 }
-
-/** ===================== LOGS ===================== **/
-function getLogs(token, page, pageSize) {
-  const caller = assertAuth_(token);
-  const sh = SS.getSheetByName(SH_LOG);
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return { rows: [], total: 0, page: 1, pageSize: 50 };
-  const rows = values.slice(1).map(r=>({
-    ts: r[0], email: r[1], action: r[2], details: r[3]
-  }));
-  const total = rows.length;
-  const p = Math.max(1, parseInt(page||1,10));
-  const ps = Math.max(1, parseInt(pageSize||50,10));
-  const start = (p-1)*ps;
-  return { rows: rows.slice(start, start+ps), total, page: p, pageSize: ps };
+function getSheet_(name){
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sh = ss.getSheetByName(name);
+  if(!sh) throw new Error('Липсва лист: '+name);
+  return sh;
+}
+function toDateOnly_(v){
+  if(!v) return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  if(isNaN(d.getTime())) return null;
+  return Utilities.formatDate(d, TZ, 'yyyy-MM-dd');
+}
+function round2_(n){ return Math.round((Number(n)||0)*100)/100; }
+function defaultReport_(){
+  return {
+    kpi:{income_total:0,expense_total:0,net:0,tx_count:0},
+    byMethod:[],byCatIncome:[],byCatExpense:[],
+    expenseByDocType:[],suppliersTop:[],closings:[],recentTx:[]
+  };
 }
