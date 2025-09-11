@@ -29,6 +29,7 @@ function onOpen(){
   SpreadsheetApp.getUi()
     .createMenu('Отчитане')
     .addItem('Отвори приложението', 'showWebApp_')
+    .addItem('Админ панел', 'showAdminPanel_')
     .addToUi();
 }
 function showWebApp_(){
@@ -39,8 +40,21 @@ function showWebApp_(){
     .setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
 }
-function doGet(){
+function showAdminPanel_(){
+  const html = HtmlService.createHtmlOutputFromFile('Admin')
+    .setTitle('Админ панел')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setWidth(1200)
+    .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Админ панел');
+}
+function doGet(e){
   ensureSheets_();
+  if (e && e.parameter && e.parameter.page === 'admin') {
+    return HtmlService.createHtmlOutputFromFile('Admin')
+      .setTitle('Админ панел')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Отчитане на магазин')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
