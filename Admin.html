@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Админ панел</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}
+    .wrap{max-width:960px;margin:20px auto;padding:0 16px}
+    input,button,select{padding:6px;margin:4px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #e5e7eb;padding:4px;text-align:left;font-size:13px}
+    th{background:#f8fafc}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Админ панел</h2>
+    <div id="loginBox">
+      <input type="email" id="email" placeholder="Email">
+      <input type="password" id="password" placeholder="Парола">
+      <button onclick="loginUI()">Вход</button>
+    </div>
+
+    <div id="app" class="hidden">
+      <button onclick="logoutUI()">Изход</button>
+      <h3>Потребители</h3>
+      <div>
+        <input type="text" id="newUserName" placeholder="Име">
+        <input type="email" id="newUserEmail" placeholder="Email">
+        <input type="password" id="newUserPass" placeholder="Парола">
+        <button onclick="saveUser()">Запази</button>
+      </div>
+      <table id="usersTbl">
+        <thead><tr><th>Име</th><th>Email</th><th>Парола</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Панели</h3>
+      <table id="panelsTbl">
+        <thead><tr><th>Ключ</th><th>Заглавие</th><th>Видим</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Транзакции (последни 20)</h3>
+      <table id="txTbl">
+        <thead><tr id="txHeader"></tr></thead>
+        <tbody id="txRows"></tbody>
+      </table>
+
+      <h3>Логове (последни 20)</h3>
+      <table id="logTbl">
+        <thead><tr><th>Време</th><th>Email</th><th>Действие</th><th>Детайли</th></tr></thead>
+        <tbody id="logRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+let TOKEN = null;
+
+function loginUI(){
+  google.script.run.withSuccessHandler(res=>{
+    TOKEN = res.token;
+    byId('loginBox').classList.add('hidden');
+    byId('app').classList.remove('hidden');
+    loadAll();
+  }).withFailureHandler(err=>alert(err.message||err))
+    .login(byId('email').value, byId('password').value);
+}
+function logoutUI(){
+  google.script.run.logout(TOKEN);
+  TOKEN = null;
+  byId('app').classList.add('hidden');
+  byId('loginBox').classList.remove('hidden');
+}
+
+function saveUser(){
+  const name = byId('newUserName').value;
+  const email = byId('newUserEmail').value;
+  const pass = byId('newUserPass').value;
+  google.script.run.withSuccessHandler(loadUsers)
+    .withFailureHandler(e=>alert(e.message||e))
+    .upsertUser(TOKEN, null, name, email, pass);
+}
+
+function deleteUser(row,email){
+  if(!confirm('Сигурни ли сте?')) return;
+  google.script.run.withSuccessHandler(loadUsers)
+    .withFailureHandler(e=>alert(e.message||e))
+    .deleteUser(TOKEN,row,email);
+}
+
+function loadUsers(){
+  google.script.run.withSuccessHandler(list=>{
+    const tb = byId('usersTbl').querySelector('tbody');
+    tb.innerHTML = list.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.hasPassword?'✓':''}</td><td><button onclick="deleteUser(${u.row},'${u.email}')">Изтрий</button></td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .listUsers(TOKEN);
+}
+
+function togglePanel(row,ck){
+  google.script.run.withFailureHandler(e=>{ ck.checked=!ck.checked; alert(e.message||e); })
+    .setPanelVisibility(TOKEN,row,ck.checked);
+}
+
+function loadPanels(){
+  google.script.run.withSuccessHandler(list=>{
+    const tb = byId('panelsTbl').querySelector('tbody');
+    tb.innerHTML = list.map(p=>`<tr><td>${p.key}</td><td>${p.title}</td><td><input type="checkbox" ${p.visible?'checked':''} onchange="togglePanel(${p.row},this)"></td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .listPanels(TOKEN);
+}
+
+function loadTransactions(){
+  google.script.run.withSuccessHandler(res=>{
+    const header = byId('txHeader');
+    header.innerHTML = res.header.map(h=>`<th>${h}</th>`).join('');
+    const rows = byId('txRows');
+    rows.innerHTML = res.rows.map(r=>`<tr>${res.header.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .getTransactions(TOKEN,1,20,{});
+}
+
+function loadLogs(){
+  google.script.run.withSuccessHandler(res=>{
+    const rows = byId('logRows');
+    rows.innerHTML = res.rows.map(r=>`<tr><td>${r.ts}</td><td>${r.email}</td><td>${r.action}</td><td>${r.details}</td></tr>`).join('');
+  }).withFailureHandler(e=>alert(e.message||e))
+    .getLogs(TOKEN,1,20);
+}
+
+function loadAll(){
+  loadUsers();
+  loadPanels();
+  loadTransactions();
+  loadLogs();
+}
+function byId(id){ return document.getElementById(id); }
+</script>
+</body>
+</html>
