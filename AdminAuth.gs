@@ -1,12 +1,7 @@
 /**
  * Admin authentication and logging utilities.
  */
-
-// Use the active spreadsheet to avoid relying on constants from other files
-const SS = SpreadsheetApp.getActive();
-=======
 const SS = SpreadsheetApp.openById(SS_ID);
-
 const SH_ADMIN_USERS = 'AdminUsers';
 const SH_PANELS = 'Panels';
 const SH_LOG = 'AuditLog';
