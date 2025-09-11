@@ -84,3 +84,68 @@ function assertAuth_(token) {
   return email;
 }
 
+// === Added advanced auth with roles and logging ===
+function sha256_(s) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
+  return bytes.map(b => ('0'+(b & 0xFF).toString(16)).slice(-2)).join('');
+}
+
+function nowStr_() {
+  return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss');
+}
+
+function log_(email, action, details, ip, ua) {
+  ensureSheets_();
+  ensureAdminSheets_();
+  const sh = SS.getSheetByName(SH_LOG);
+  sh.appendRow([nowStr_(), email || '', action || '', details || '', ip || '', ua || '']);
+}
+
+function login(email, password) {
+  ensureSheets_();
+  ensureAdminSheets_();
+  if (!email || !password) throw new Error('Липсват email/парола.');
+  const sh = SS.getSheetByName(SH_USERS);
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) throw new Error('Няма регистрирани потребители.');
+  const hash = sha256_(password);
+  let user = null;
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const mail = String(row[1] || '').toLowerCase();
+    const pass = String(row[2] || '');
+    if (mail && mail === String(email).toLowerCase() && pass === hash) {
+      user = { name: row[0], email: row[1], role: row[3] || 'VIEWER' };
+      break;
+    }
+  }
+  if (!user) throw new Error('Невалидни данни за вход.');
+  const token = Utilities.getUuid();
+  CacheService.getScriptCache().put(`sess_${token}`, user.email, 60 * 15);
+  log_(user.email, 'LOGIN', 'Успешен вход');
+  return { token, user };
+}
+
+function logout(token, email) {
+  if (token) CacheService.getScriptCache().remove(`sess_${token}`);
+  log_(email || '', 'LOGOUT', 'Изход');
+  return true;
+}
+
+function assertAuth_(token) {
+  const email = CacheService.getScriptCache().get(`sess_${token}`);
+  if (!email) throw new Error('Сесията е изтекла. Влез отново.');
+  ensureSheets_();
+  ensureAdminSheets_();
+  const sh = SS.getSheetByName(SH_USERS);
+  const values = sh.getDataRange().getValues();
+  let role = 'VIEWER';
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][1] || '').toLowerCase() === String(email).toLowerCase()) {
+      role = values[i][3] || 'VIEWER';
+      break;
+    }
+  }
+  return { email, role };
+}
+
