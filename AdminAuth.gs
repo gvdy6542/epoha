@@ -1,44 +1,39 @@
-diff --git a//dev/null b/AdminAuth.gs
-index 0000000000000000000000000000000000000000..0963f4af9e62e9e3a0deac1598e56e9ef4db7340 100644
---- a//dev/null
-+++ b/AdminAuth.gs
-@@ -0,0 +1,85 @@
-+/**
-+ * Admin authentication and logging utilities.
-+ */
-+// Use the active spreadsheet to avoid relying on constants from other files
-+const SS = SpreadsheetApp.getActive();
-+const SH_ADMIN_USERS = 'AdminUsers';
-+const SH_PANELS = 'Panels';
-+const SH_LOG = 'AuditLog';
-+
-+function ensureAdminSheets_() {
-+  const need = [
-+    [SH_ADMIN_USERS, ['Name','Email','PasswordHash']],
-+    [SH_PANELS, ['PanelKey','Title','Visible']],
-+    [SH_LOG, ['Timestamp','Email','Action','Details']]
-+  ];
-+  need.forEach(([name, header]) => {
-+    let sh = SS.getSheetByName(name);
-+    if (!sh) {
-+      sh = SS.insertSheet(name);
-+      sh.getRange(1,1,1,header.length).setValues([header]);
-+    } else if (sh.getLastRow() === 0) {
-+      sh.getRange(1,1,1,header.length).setValues([header]);
-+    }
-+  });
-+  const pSh = SS.getSheetByName(SH_PANELS);
-+  if (pSh.getLastRow() < 2) {
-+    const rows = [
-+      ['dashboard','Табло', true],
-+      ['users','Потребители', true],
-+      ['panels','Панели', true],
-+      ['transactions','Транзакции', true],
-+      ['logs','Логове', true]
-+    ];
-+    pSh.getRange(2,1,rows.length,3).setValues(rows);
-+  }
-+}
+
+ * Admin authentication and logging utilities.
+ */
+// Use the active spreadsheet to avoid relying on constants from other files
+const SS = SpreadsheetApp.getActive();
+const SH_ADMIN_USERS = 'AdminUsers';
+const SH_PANELS = 'Panels';
+const SH_LOG = 'AuditLog';
+
+function ensureAdminSheets_() {
+  const need = [
+    [SH_ADMIN_USERS, ['Name','Email','PasswordHash']],
+    [SH_PANELS, ['PanelKey','Title','Visible']],
+    [SH_LOG, ['Timestamp','Email','Action','Details']]
+  ];
+  need.forEach(([name, header]) => {
+    let sh = SS.getSheetByName(name);
+    if (!sh) {
+      sh = SS.insertSheet(name);
+      sh.getRange(1,1,1,header.length).setValues([header]);
+    } else if (sh.getLastRow() === 0) {
+      sh.getRange(1,1,1,header.length).setValues([header]);
+    }
+  });
+  const pSh = SS.getSheetByName(SH_PANELS);
+  if (pSh.getLastRow() < 2) {
+    const rows = [
+      ['dashboard','Табло', true],
+      ['users','Потребители', true],
+      ['panels','Панели', true],
+      ['transactions','Транзакции', true],
+      ['logs','Логове', true]
+    ];
+    pSh.getRange(2,1,rows.length,3).setValues(rows);
+  }
+}
 +ensureAdminSheets_();
 +
 +function sha256_(s) {
@@ -88,3 +83,6 @@ index 0000000000000000000000000000000000000000..0963f4af9e62e9e3a0deac1598e56e9e
 +  if (!email) throw new Error('Сесията е изтекла. Влез отново.');
 +  return email;
 +}
+ 
+EOF
+)
