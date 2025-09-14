@@ -17,7 +17,7 @@ function ensureAdminSheets_() {
   // Users (Name,Email,PasswordHash,Role)
   let shU = SS_().getSheetByName('Users');
   if (!shU) {
-    shU = SS.insertSheet('Users');
+    shU = SS_().insertSheet('Users');
     shU.getRange(1,1,1,4).setValues([['Name','Email','PasswordHash','Role']]);
     shU.setFrozenRows(1);
   } else if (shU.getLastRow() === 0) {
@@ -27,7 +27,7 @@ function ensureAdminSheets_() {
   // Panels (PanelKey,Title,Visible)
   let shP = SS_().getSheetByName('Panels');
   if (!shP) {
-    shP = SS.insertSheet('Panels');
+    shP = SS_().insertSheet('Panels');
     shP.getRange(1,1,1,3).setValues([['PanelKey','Title','Visible']]);
     shP.setFrozenRows(1);
     shP.getRange(2,1,5,3).setValues([
@@ -44,7 +44,7 @@ function ensureAdminSheets_() {
   // AuditLog (Timestamp,Email,Action,Details,IP,UserAgent)
   let shL = SS_().getSheetByName('AuditLog');
   if (!shL) {
-    shL = SS.insertSheet('AuditLog');
+    shL = SS_().insertSheet('AuditLog');
     shL.getRange(1,1,1,6).setValues([['Timestamp','Email','Action','Details','IP','UserAgent']]);
     shL.setFrozenRows(1);
   } else if (shL.getLastRow() === 0) {

@@ -138,7 +138,8 @@ function showTab(key){
 function doLogout(){
   google.script.run.withSuccessHandler(_=>{
     TOKEN=null; CURRENT_USER=null; CURRENT_ROLE='VIEWER';
-    // връщаме към началната страница
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
   }).logout(TOKEN, CURRENT_USER?.email||'');
 }
@@ -254,11 +255,20 @@ function loadLogs(page){
 
 /* Инициализация – взимаме данни за текущата сесия от логин-а (кеша) */
 window.addEventListener('load', ()=>{
+  const token = localStorage.getItem('token');
+  if(!token){
+    alert('Сесията е изтекла.');
+    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+    return;
+  }
   google.script.run.withSuccessHandler(res=>{
     TOKEN = res.token; CURRENT_USER = res.user||{}; CURRENT_ROLE = CURRENT_USER.role||'VIEWER';
     $('who').textContent = `${CURRENT_USER.name||''} • ${CURRENT_USER.email||''} • ${CURRENT_ROLE}`;
     applyRoleGuards(); showTab('dash');
-  }).resumeSession(); // виж AdminAuth.gs
+  }).withFailureHandler(err=>{
+    alert(err.message||err);
+    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+  }).resumeSessionWithToken(token);
 });
 </script>
 </body>
