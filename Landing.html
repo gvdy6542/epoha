@@ -337,38 +337,30 @@
         }
         
         if (isValid) {
-          // Показване на съобщение за зареждане
           loginBtn.textContent = 'Вход...';
           loginBtn.disabled = true;
-          
-          // Симулация на заявка към сървъра
-          setTimeout(function() {
-            // В реална ситуация тук ще имаме заявка към Google Script
-            alert('Входът е успешен! Пренасочване към основното приложение...');
-            // В реална ситуация ще пренасочим към приложението
-            // google.script.run.withSuccessHandler(...).login(...);
-            
-            // Връщане на бутона в нормално състояние
-            loginBtn.textContent = 'Влез в системата';
-            loginBtn.disabled = false;
-          }, 1500);
+          google.script.run
+            .withSuccessHandler(res => {
+              localStorage.setItem('token', res.token);
+              localStorage.setItem('user', JSON.stringify(res.user || {}));
+              window.location.href = '?page=admin';
+            })
+            .withFailureHandler(err => {
+              alert(err.message || err);
+              loginBtn.textContent = 'Влез в системата';
+              loginBtn.disabled = false;
+            })
+            .login(emailInput.value.trim(), passwordInput.value);
         }
       });
-      
       // Бутон за админ панел
       adminBtn.addEventListener('click', function() {
-        adminBtn.textContent = 'Отваряне...';
-        adminBtn.disabled = true;
-        
-        // Симулация на зареждане
-        setTimeout(function() {
-          alert('Пренасочване към админ панела...');
-          // В реална ситуация: google.script.run.showAdminPanel_();
-          
-          // Връщане на бутона в нормално състояние
-          adminBtn.textContent = 'Вход в админ панела';
-          adminBtn.disabled = false;
-        }, 1000);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          alert('Моля, влез първо.');
+          return;
+        }
+        window.location.href = '?page=admin';
       });
     });
   </script>
