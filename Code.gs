@@ -55,17 +55,20 @@ function doGet(e){
   ensureSheets_();
   const page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page).toLowerCase() : '';
   if (page === 'app') {
-    return HtmlService.createHtmlOutputFromFile('Index')
+    return HtmlService.createTemplateFromFile('Index')
+      .evaluate()
       .setTitle('Отчитане на магазин')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'admin') {
-    return HtmlService.createHtmlOutputFromFile('Admin')
+    return HtmlService.createTemplateFromFile('Admin')
+      .evaluate()
       .setTitle('Админ панел')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   // default: Landing
-  return HtmlService.createHtmlOutputFromFile('Landing')
+  return HtmlService.createTemplateFromFile('Landing')
+    .evaluate()
     .setTitle('Начало')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
