@@ -4,250 +4,262 @@
   <meta charset="utf-8" />
   <title>Админ панел</title>
   <style>
-    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}
-    .wrap{max-width:960px;margin:20px auto;padding:0 16px}
-    input,button,select{padding:6px;margin:4px}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border:1px solid #e5e7eb;padding:4px;text-align:left;font-size:13px}
-    th{background:#f8fafc}
+    :root{--bg:#f6f8fa;--fg:#0f172a;--muted:#64748b;--card:#fff;--br:#e5e7eb;--acc:#0ea5e9;--red:#ef4444;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--fg)}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    .card{background:var(--card);border:1px solid var(--br);border-radius:12px;padding:14px}
+    h1,h2,h3{margin:0 0 10px}
+    label{display:block;font-size:12px;color:var(--muted);margin:6px 0}
+    input,select,button{padding:8px;border:1px solid var(--br);border-radius:8px;font-size:14px}
+    button{cursor:pointer}
+    .btn{background:var(--acc);border-color:var(--acc);color:#fff}
+    .btn.danger{background:var(--red);border-color:var(--red)}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     .hidden{display:none}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--br);padding:8px;text-align:left;font-size:13px;vertical-align:top}
+    th{background:#f8fafc}
+    .muted{color:var(--muted)}
+    .pill{display:inline-block;border:1px solid var(--br);border-radius:999px;padding:2px 8px;font-size:12px}
+    .right{justify-content:flex-end}
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px}
+    .modal .box{background:#fff;border:1px solid var(--br);border-radius:12px;padding:16px;min-width:340px;max-width:640px;max-height:90vh;overflow:auto}
+    nav{display:flex;gap:8px;margin-bottom:12px}
+    nav button{background:#fff;border:1px solid var(--br);padding:8px 12px;border-radius:999px}
+    nav button.active{background:var(--acc);border-color:var(--acc);color:#fff}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h2>Админ панел</h2>
-    <div id="loginBox">
-      <input type="email" id="email" placeholder="Email">
-      <input type="password" id="password" placeholder="Парола">
-      <button onclick="loginUI()">Вход</button>
+<div class="wrap">
+  <div class="card row" style="align-items:center;justify-content:space-between">
+    <div>
+      <h2>Админ панел</h2>
+      <div id="who" class="muted"></div>
     </div>
+    <div class="row">
+      <button id="tabbtn-dash" onclick="showTab('dash')">Dashboard</button>
+      <button id="tabbtn-users" onclick="showTab('users')">Users</button>
+      <button id="tabbtn-panels" onclick="showTab('panels')">Panels</button>
+      <button id="tabbtn-tx" onclick="showTab('tx')">Transactions</button>
+      <button id="tabbtn-logs" onclick="showTab('logs')">Logs</button>
+      <button class="btn danger" onclick="doLogout()">Изход</button>
+    </div>
+  </div>
 
-    <div id="app" class="hidden">
-      <button onclick="logoutUI()">Изход</button>
+  <div id="tab-dash" class="card"><h3>Табло</h3>
+    <div class="grid3">
+      <div class="card"><div>Потребители</div><div id="dash-users" class="pill">—</div></div>
+      <div class="card"><div>Панели (ON)</div><div id="dash-panels" class="pill">—</div></div>
+      <div class="card"><div>Последни действия</div><div id="dash-latest" class="muted">—</div></div>
+    </div>
+  </div>
+
+  <div id="tab-users" class="card hidden">
+    <div class="row" style="justify-content:space-between;align-items:center">
       <h3>Потребители</h3>
-      <div>
-        <input type="text" id="newUserName" placeholder="Име">
-        <input type="email" id="newUserEmail" placeholder="Email">
-        <input type="password" id="newUserPass" placeholder="Парола">
-        <button onclick="saveUser()">Запази</button>
+      <button class="btn" id="btn-user-new" onclick="openUserForm()">+ Нов</button>
+    </div>
+    <div id="users-table" style="margin-top:8px"></div>
+    <div id="user-form" class="hidden" style="margin-top:12px">
+      <h4 id="u-title">Нов потребител</h4>
+      <div class="grid3">
+        <div><label>Име</label><input id="u-name"></div>
+        <div><label>Email</label><input id="u-email" type="email"></div>
+        <div><label>Парола (нова)</label><input id="u-pass" type="password" placeholder="остави празно за без промяна"></div>
       </div>
-      <table id="usersTbl">
-        <thead><tr><th>Име</th><th>Email</th><th>Парола</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-
-      <h3>Панели</h3>
-      <table id="panelsTbl">
-        <thead><tr><th>Ключ</th><th>Заглавие</th><th>Видим</th></tr></thead>
-        <tbody></tbody>
-      </table>
-
-      <h3>Транзакции (последни 20)</h3>
-      <table id="txTbl">
-        <thead><tr id="txHeader"></tr></thead>
-        <tbody id="txRows"></tbody>
-      </table>
-
-      <h3>Логове (последни 20)</h3>
-      <table id="logTbl">
-        <thead><tr><th>Време</th><th>Email</th><th>Действие</th><th>Детайли</th></tr></thead>
-        <tbody id="logRows"></tbody>
-      </table>
+      <div style="margin-top:8px;max-width:220px">
+        <label>Роля</label>
+        <select id="u-role"><option>ADMIN</option><option>EDITOR</option><option selected>VIEWER</option></select>
+      </div>
+      <div class="row right" style="margin-top:10px">
+        <button class="btn" onclick="saveUser()">Запази</button>
+        <button onclick="closeUserForm()">Откажи</button>
+      </div>
+      <input type="hidden" id="u-row">
     </div>
   </div>
 
-<script>
-let TOKEN = null;
-
-function loginUI(){
-  google.script.run.withSuccessHandler(res=>{
-    TOKEN = res.token;
-    byId('loginBox').classList.add('hidden');
-    byId('app').classList.remove('hidden');
-    loadAll();
-  }).withFailureHandler(err=>alert(err.message||err))
-    .login(byId('email').value, byId('password').value);
-}
-function logoutUI(){
-  google.script.run.logout(TOKEN);
-  TOKEN = null;
-  byId('app').classList.add('hidden');
-  byId('loginBox').classList.remove('hidden');
-}
-
-function saveUser(){
-  const name = byId('newUserName').value;
-  const email = byId('newUserEmail').value;
-  const pass = byId('newUserPass').value;
-  google.script.run.withSuccessHandler(loadUsers)
-    .withFailureHandler(e=>alert(e.message||e))
-    .upsertUser(TOKEN, null, name, email, pass);
-}
-
-function deleteUser(row,email){
-  if(!confirm('Сигурни ли сте?')) return;
-  google.script.run.withSuccessHandler(loadUsers)
-    .withFailureHandler(e=>alert(e.message||e))
-    .deleteUser(TOKEN,row,email);
-}
-
-function loadUsers(){
-  google.script.run.withSuccessHandler(list=>{
-    const tb = byId('usersTbl').querySelector('tbody');
-    tb.innerHTML = list.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.hasPassword?'✓':''}</td><td><button onclick="deleteUser(${u.row},'${u.email}')">Изтрий</button></td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .listUsers(TOKEN);
-}
-
-function togglePanel(row,ck){
-  google.script.run.withFailureHandler(e=>{ ck.checked=!ck.checked; alert(e.message||e); })
-    .setPanelVisibility(TOKEN,row,ck.checked);
-}
-
-function loadPanels(){
-  google.script.run.withSuccessHandler(list=>{
-    const tb = byId('panelsTbl').querySelector('tbody');
-    tb.innerHTML = list.map(p=>`<tr><td>${p.key}</td><td>${p.title}</td><td><input type="checkbox" ${p.visible?'checked':''} onchange="togglePanel(${p.row},this)"></td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .listPanels(TOKEN);
-}
-
-function loadTransactions(){
-  google.script.run.withSuccessHandler(res=>{
-    const header = byId('txHeader');
-    header.innerHTML = res.header.map(h=>`<th>${h}</th>`).join('');
-    const rows = byId('txRows');
-    rows.innerHTML = res.rows.map(r=>`<tr>${res.header.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .getTransactions(TOKEN,1,20,{});
-}
-
-function loadLogs(){
-  google.script.run.withSuccessHandler(res=>{
-    const rows = byId('logRows');
-    rows.innerHTML = res.rows.map(r=>`<tr><td>${r.ts}</td><td>${r.email}</td><td>${r.action}</td><td>${r.details}</td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .getLogs(TOKEN,1,20);
-}
-
-function loadAll(){
-  loadUsers();
-  loadPanels();
-  loadTransactions();
-  loadLogs();
-}
-function byId(id){ return document.getElementById(id); }
-</script>
-<style>
-body > * { display:none; }
-#adminApp { display:block; }
-.hidden{display:none;}
-nav button{margin-right:4px;}
-table{width:100%;border-collapse:collapse;margin-top:8px;}
-th,td{border:1px solid #e5e7eb;padding:4px;font-size:13px;text-align:left;}
-</style>
-<div id="adminApp">
-  <div id="loginView">
-    <input type="email" id="aEmail" placeholder="Email">
-    <input type="password" id="aPass" placeholder="Парола">
-    <button onclick="adminLogin()">Вход</button>
+  <div id="tab-panels" class="card hidden">
+    <h3>Панели</h3>
+    <div id="panels-table" style="margin-top:8px"></div>
   </div>
-  <div id="mainView" class="hidden">
-    <nav>
-      <button onclick="showTab('dash')">Dashboard</button>
-      <button onclick="showTab('users')">Users</button>
-      <button onclick="showTab('panels')">Panels</button>
-      <button onclick="showTab('tx')">Transactions</button>
-      <button onclick="showTab('logs')">Logs</button>
-      <button onclick="adminLogout()">Изход</button>
-    </nav>
-    <section id="tab-dash"></section>
-    <section id="tab-users" class="hidden">
-      <div>
-        <input type="text" id="uName" placeholder="Име">
-        <input type="email" id="uEmail" placeholder="Email">
-        <input type="password" id="uPass" placeholder="Парола">
-        <select id="uRole"><option>ADMIN</option><option>EDITOR</option><option selected>VIEWER</option></select>
-        <button onclick="saveUserUI()">Запази</button>
+
+  <div id="tab-tx" class="card hidden">
+    <div class="row" style="justify-content:space-between;align-items:end">
+      <h3>Транзакции</h3>
+      <div class="row"><input id="flt-text" placeholder="Филтър (supplier/note/type/method/docNo)">
+        <button class="btn" onclick="loadTx(1)">Търси</button>
       </div>
-      <table><thead><tr><th>Име</th><th>Email</th><th>Роля</th><th>Парола</th><th></th></tr></thead><tbody id="usersBody"></tbody></table>
-    </section>
-    <section id="tab-panels" class="hidden">
-      <table><thead><tr><th>Ключ</th><th>Заглавие</th><th>Видим</th></tr></thead><tbody id="panelsBody"></tbody></table>
-    </section>
-    <section id="tab-tx" class="hidden">
-      <input type="text" id="txFilter" placeholder="Филтър" oninput="loadTx()">
-      <table><thead><tr id="txHead"></tr></thead><tbody id="txBody"></tbody></table>
-    </section>
-    <section id="tab-logs" class="hidden">
-      <table><thead><tr><th>Време</th><th>Email</th><th>Действие</th><th>Детайли</th></tr></thead><tbody id="logsBody"></tbody></table>
-    </section>
+    </div>
+    <div id="tx-table" style="margin-top:8px"></div>
+
+    <div id="tx-modal" class="modal" onclick="modalBgClose(event)">
+      <div class="box">
+        <h3>Редакция на транзакция</h3>
+        <div id="tx-fields" class="grid3" style="margin-top:8px"></div>
+        <div class="row right" style="margin-top:10px">
+          <button class="btn" onclick="saveTx()">Запази</button>
+          <button onclick="closeTx()">Откажи</button>
+        </div>
+        <input type="hidden" id="tx-row">
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-logs" class="card hidden">
+    <h3>Одит лог</h3>
+    <div id="logs-table" style="margin-top:8px"></div>
   </div>
 </div>
+
 <script>
-let ADMIN_TOKEN = null;
-function adminLogin(){
+let TOKEN=null, CURRENT_USER=null, CURRENT_ROLE='VIEWER';
+let TX_HEADER=[];
+
+const $ = id => document.getElementById(id);
+const html = s => s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));
+
+function setActiveTab(key){
+  ['dash','users','panels','tx','logs'].forEach(k=>{ $('tabbtn-'+k).classList.toggle('active', k===key); });
+}
+function showTab(key){
+  ['dash','users','panels','tx','logs'].forEach(k=>{ $('tab-'+k).classList.toggle('hidden', k!==key); });
+  setActiveTab(key);
+  if (key==='dash') refreshDashboard();
+  if (key==='users') loadUsers();
+  if (key==='panels') loadPanels();
+  if (key==='tx') loadTx(1);
+  if (key==='logs') loadLogs(1);
+}
+
+function doLogout(){
+  google.script.run.withSuccessHandler(_=>{
+    TOKEN=null; CURRENT_USER=null; CURRENT_ROLE='VIEWER';
+    // връщаме към началната страница
+    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+  }).logout(TOKEN, CURRENT_USER?.email||'');
+}
+function applyRoleGuards(){
+  const isAdmin = CURRENT_ROLE==='ADMIN';
+  const isEditor = CURRENT_ROLE==='EDITOR';
+  $('tabbtn-users').style.display = (isAdmin? '' : (isEditor? '' : 'none'));
+  $('btn-user-new').disabled = !isAdmin;
+}
+
+function refreshDashboard(){
+  google.script.run.withSuccessHandler(panels=>{
+    $('dash-panels').textContent = panels.filter(p=>p.visible).length;
+  }).listPanels(TOKEN);
+
+  google.script.run.withSuccessHandler(users=>{
+    $('dash-users').textContent = users.length;
+  }).listUsers(TOKEN);
+
+  google.script.run.withSuccessHandler(data=>{
+    const rows = (data.rows||[]).slice(0,6).map(r=>`${r.ts} • ${r.email} • ${r.action}`).join('<br>');
+    $('dash-latest').innerHTML = rows || '<span class="muted">—</span>';
+  }).getLogs(TOKEN,1,10);
+}
+
+/* USERS */
+function loadUsers(){
+  google.script.run.withSuccessHandler(rows=>{
+    const isAdmin = CURRENT_ROLE==='ADMIN';
+    const body = rows.map(u=>`
+      <tr>
+        <td>${html(u.name||'')}</td>
+        <td>${html(u.email||'')}</td>
+        <td>${html(u.role||'')}</td>
+        <td>${u.hasPassword?'<span class="pill">запазена</span>':'<span class="muted">липсва</span>'}</td>
+        <td>
+          <button onclick="editUser(${u.row},'${html(u.name||'')}', '${html(u.email||'')}', '${html(u.role||'VIEWER')}')" ${isAdmin?'':'disabled'}>Редакция</button>
+          <button class="btn danger" onclick="delUser(${u.row},'${html(u.email||'')}')" ${isAdmin?'':'disabled'}>Изтрий</button>
+        </td>
+      </tr>`).join('');
+    $('users-table').innerHTML = `<table>
+      <thead><tr><th>Име</th><th>Email</th><th>Роля</th><th>Парола</th><th></th></tr></thead>
+      <tbody>${body || `<tr><td colspan="5" class="muted">Няма данни</td></tr>`}</tbody>
+    </table>`;
+  }).listUsers(TOKEN);
+}
+function openUserForm(){ $('u-row').value=''; $('u-name').value=''; $('u-email').value=''; $('u-pass').value=''; $('u-role').value='VIEWER'; $('u-title').textContent='Нов потребител'; $('user-form').classList.remove('hidden'); }
+function closeUserForm(){ $('user-form').classList.add('hidden'); }
+function editUser(row, name, email, role){ $('u-row').value=row; $('u-name').value=name; $('u-email').value=email; $('u-pass').value=''; $('u-role').value=role||'VIEWER'; $('u-title').textContent='Редакция'; $('user-form').classList.remove('hidden'); }
+function saveUser(){
+  const row = Number($('u-row').value||0) || null;
+  const name=$('u-name').value.trim(), email=$('u-email').value.trim(), pass=$('u-pass').value, role=$('u-role').value;
+  google.script.run.withSuccessHandler(_=>{ closeUserForm(); loadUsers(); }).withFailureHandler(alert).upsertUser(TOKEN, row, name, email, pass||'', role);
+}
+function delUser(row, email){ if(!confirm('Сигурен ли си?')) return; google.script.run.withSuccessHandler(_=>{ loadUsers(); }).withFailureHandler(alert).deleteUser(TOKEN, row, email||''); }
+
+/* PANELS */
+function loadPanels(){
+  google.script.run.withSuccessHandler(rows=>{
+    const canToggle = (CURRENT_ROLE==='ADMIN' || CURRENT_ROLE==='EDITOR');
+    const body = rows.map(r=>`
+      <tr>
+        <td>${html(r.key)}</td><td>${html(r.title)}</td>
+        <td><input type="checkbox" ${r.visible?'checked':''} ${canToggle?'':'disabled'} onchange="togglePanel(${r.row}, this.checked)"></td>
+      </tr>`).join('');
+    $('panels-table').innerHTML = `<table><thead><tr><th>Ключ</th><th>Заглавие</th><th>Видим</th></tr></thead><tbody>${body}</tbody></table>`;
+  }).listPanels(TOKEN);
+}
+function togglePanel(row, state){
+  if (!(CURRENT_ROLE==='ADMIN' || CURRENT_ROLE==='EDITOR')) { alert('Нямаш право.'); return; }
+  google.script.run.withSuccessHandler(_=>{}).withFailureHandler(err=>{ alert(err.message||err); loadPanels(); }).setPanelVisibility(TOKEN, row, !!state);
+}
+
+/* TX */
+function loadTx(page){
+  const q = $('flt-text').value.trim();
+  const filters = q ? { Supplier:q, Note:q, Type:q, Method:q, DocNo:q } : {};
   google.script.run.withSuccessHandler(res=>{
-    ADMIN_TOKEN = res.token;
-    byId('loginView').classList.add('hidden');
-    byId('mainView').classList.remove('hidden');
-    loadUsersUI(); loadPanelsUI(); loadTx(); loadLogsUI();
-    showTab('dash');
-  }).withFailureHandler(err=>alert(err.message||err))
-    .login(byId('aEmail').value, byId('aPass').value);
+    TX_HEADER = res.header || [];
+    const head = TX_HEADER.slice(0,6);
+    const body = (res.rows||[]).map(r=>{
+      const cols = head.map(h=>html(String(r[h]??''))).join('</td><td>');
+      return `<tr onclick="openTx(${r._row})"><td>${r._row}</td><td>${cols}</td></tr>`;
+    }).join('');
+    $('tx-table').innerHTML = `
+      <table><thead><tr><th>#</th>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${head.length+1}" class="muted">Няма данни</td></tr>`}</tbody></table>
+      <div class="muted">Общо: ${res.total} • Стр: ${res.page}</div>`;
+  }).getTransactions(TOKEN, page||1, 20, filters);
 }
-function adminLogout(){
-  google.script.run.logout(ADMIN_TOKEN);
-  ADMIN_TOKEN = null;
-  location.reload();
+function openTx(row){
+  $('tx-row').value = row;
+  const fields = TX_HEADER.map(h=>`<div><label>${h}</label><input data-k="${h}" value=""></div>`).join('');
+  $('tx-fields').innerHTML = fields; $('tx-modal').style.display='flex';
 }
-function showTab(t){
-  ['dash','users','panels','tx','logs'].forEach(id=>{
-    byId('tab-'+id).classList.add('hidden');
-  });
-  byId('tab-'+t).classList.remove('hidden');
+function closeTx(){ $('tx-modal').style.display='none'; $('tx-fields').innerHTML=''; }
+function modalBgClose(e){ if(e.target && e.target.id==='tx-modal') closeTx(); }
+function saveTx(){
+  if (!(CURRENT_ROLE==='ADMIN' || CURRENT_ROLE==='EDITOR')) { alert('VIEWER е read-only'); return; }
+  const row = Number($('tx-row').value);
+  const kvs = {}; document.querySelectorAll('#tx-fields [data-k]').forEach(inp=>{ kvs[inp.getAttribute('data-k')] = inp.value; });
+  google.script.run.withSuccessHandler(_=>{ closeTx(); loadTx(1); }).withFailureHandler(alert).updateTransaction(TOKEN, row, kvs);
 }
-function saveUserUI(){
-  google.script.run.withSuccessHandler(loadUsersUI)
-    .withFailureHandler(e=>alert(e.message||e))
-    .upsertUser(ADMIN_TOKEN,null,byId('uName').value,byId('uEmail').value,byId('uPass').value,byId('uRole').value);
+
+/* LOGS */
+function loadLogs(page){
+  google.script.run.withSuccessHandler(data=>{
+    const rows = data.rows||[];
+    const htmlRows = rows.map(r=>`<tr><td>${r.ts||''}</td><td>${html(r.email||'')}</td><td>${html(r.action||'')}</td><td>${html(r.details||'')}</td></tr>`).join('');
+    $('logs-table').innerHTML = `<table><thead><tr><th>Час</th><th>Email</th><th>Действие</th><th>Детайли</th></tr></thead><tbody>${htmlRows}</tbody></table><div class="muted">Общо: ${data.total} • Стр: ${data.page}</div>`;
+  }).getLogs(TOKEN, page||1, 50);
 }
-function deleteUserUI(row,email){
-  google.script.run.withSuccessHandler(loadUsersUI)
-    .withFailureHandler(e=>alert(e.message||e))
-    .deleteUser(ADMIN_TOKEN,row,email);
-}
-function loadUsersUI(){
-  google.script.run.withSuccessHandler(list=>{
-    byId('usersBody').innerHTML = list.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${u.hasPassword?'✓':''}</td><td><button onclick="deleteUserUI(${u.row},'${u.email}')">X</button></td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .listUsers(ADMIN_TOKEN);
-}
-function loadPanelsUI(){
-  google.script.run.withSuccessHandler(list=>{
-    byId('panelsBody').innerHTML = list.map(p=>`<tr><td>${p.key}</td><td>${p.title}</td><td><input type="checkbox" ${p.visible?'checked':''} onchange="togglePanelUI(${p.row},this)"></td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .listPanels(ADMIN_TOKEN);
-}
-function togglePanelUI(row,ck){
-  google.script.run.withFailureHandler(e=>{ck.checked=!ck.checked;alert(e.message||e);})
-    .setPanelVisibility(ADMIN_TOKEN,row,ck.checked);
-}
-function loadTx(){
-  const f = byId('txFilter').value;
+
+/* Инициализация – взимаме данни за текущата сесия от логин-а (кеша) */
+window.addEventListener('load', ()=>{
   google.script.run.withSuccessHandler(res=>{
-    byId('txHead').innerHTML = res.header.map(h=>`<th>${h}</th>`).join('');
-    byId('txBody').innerHTML = res.rows.map(r=>`<tr>${res.header.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .getTransactions(ADMIN_TOKEN,1,20,{description:f});
-}
-function loadLogsUI(){
-  google.script.run.withSuccessHandler(res=>{
-    byId('logsBody').innerHTML = res.rows.map(r=>`<tr><td>${r.ts}</td><td>${r.email}</td><td>${r.action}</td><td>${r.details}</td></tr>`).join('');
-  }).withFailureHandler(e=>alert(e.message||e))
-    .getLogs(ADMIN_TOKEN,1,50);
-}
-function byId(id){return document.getElementById(id);}
+    TOKEN = res.token; CURRENT_USER = res.user||{}; CURRENT_ROLE = CURRENT_USER.role||'VIEWER';
+    $('who').textContent = `${CURRENT_USER.name||''} • ${CURRENT_USER.email||''} • ${CURRENT_ROLE}`;
+    applyRoleGuards(); showTab('dash');
+  }).resumeSession(); // виж AdminAuth.gs
+});
 </script>
 </body>
 </html>
