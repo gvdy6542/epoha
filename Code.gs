@@ -4,6 +4,7 @@
 const TZ      = 'Europe/Sofia';
 const SS_ID   = SpreadsheetApp.getActive().getId();
 
+
 const SH_TX   = 'Transactions';
 const SH_CNT  = 'CashCounts';
 const SH_DAY  = 'DayClosings';
@@ -30,43 +31,45 @@ function onOpen(){
     .createMenu('Отчитане')
     .addItem('Отвори приложението', 'showWebApp_')
     .addItem('Админ панел', 'showAdminPanel_')
+    .addSeparator()
+    .addItem('SEED ADMIN (временно)', 'seedAdminUser_') // <-- добавено
     .addToUi();
 }
+
 function showWebApp_(){
   const html = HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Отчитане на магазин')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .setWidth(1200)
-    .setHeight(800);
+    .setWidth(1200).setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Отчитане на магазин');
 }
 function showAdminPanel_(){
   const html = HtmlService.createHtmlOutputFromFile('Admin')
     .setTitle('Админ панел')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .setWidth(1200)
-    .setHeight(800);
+    .setWidth(1200).setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Админ панел');
 }
+
 function doGet(e){
-  // >>> ADD-ONLY: admin route guard (do not remove existing code below)
-  if (e && e.parameter && String(e.parameter.view).toLowerCase() === 'admin') {
-    return HtmlService.createHtmlOutputFromFile('Admin')
-      .setTitle('Админ панел')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-      .setSandboxMode(HtmlService.SandboxMode.IFRAME);
-  }
-  // <<< END ADD-ONLY
   ensureSheets_();
-  if (e && e.parameter && e.parameter.page === 'admin') {
+  const page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page).toLowerCase() : '';
+  if (page === 'app') {
+    return HtmlService.createHtmlOutputFromFile('Index')
+      .setTitle('Отчитане на магазин')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  if (page === 'admin') {
     return HtmlService.createHtmlOutputFromFile('Admin')
       .setTitle('Админ панел')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Отчитане на магазин')
+  // default: Landing
+  return HtmlService.createHtmlOutputFromFile('Landing')
+    .setTitle('Начало')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
+
 
 /**************************************************
  * PUBLIC API
@@ -455,6 +458,7 @@ function getCumulativeSummary(dateTo, store) {
 /**************************************************
  * INTERNALS
  **************************************************/
+
 function ensureSheets_(){
   const ss = SpreadsheetApp.openById(SS_ID);
 
@@ -495,11 +499,26 @@ function ensureSheets_(){
     'declared_cash','expected_cash','diff','note','user'
   ]);
 
-  // Settings, Users, Suppliers
+  // Settings
   ensureSheetWithHeader_(ss, SH_SET, ['key','value']);
-  ensureSheetWithHeader_(ss, SH_USERS, ['email','name','role','stores']);
+
+  // Users – УНИФИЦИРАНО
+  let shU = ss.getSheetByName(SH_USERS);
+  if(!shU){
+    shU = ss.insertSheet(SH_USERS);
+    shU.getRange(1,1,1,4).setValues([['Name','Email','PasswordHash','Role']]);
+    shU.setFrozenRows(1);
+  } else if (shU.getLastRow()===0){
+    shU.getRange(1,1,1,4).setValues([['Name','Email','PasswordHash','Role']]);
+  }
+
+  // Suppliers
   ensureSheetWithHeader_(ss, SH_SUP, ['supplier','created_at','created_by']);
 }
+function ping_(){ ensureSheets_(); return 'OK'; }
+
+
+
 function ensureSheetWithHeader_(ss, name, header){
   let sh = ss.getSheetByName(name);
   if(!sh) sh = ss.insertSheet(name);
@@ -539,6 +558,24 @@ function defaultReport_(){
   };
 }
 
-function getAdminUrl() {
-  return ScriptApp.getService().getUrl() + '?view=admin';
+
+
+function getAdminUrl(){ return ScriptApp.getService().getUrl() + '?view=admin'; }
+
+function seedAdminUser_(){
+  const ss = SpreadsheetApp.openById(SS_ID);
+  let sh = ss.getSheetByName('Users');
+  if (!sh){
+    sh = ss.insertSheet('Users');
+    sh.getRange(1,1,1,4).setValues([['Name','Email','PasswordHash','Role']]);
+  } else {
+    const h = sh.getRange(1,1,1,Math.max(4, sh.getLastColumn())).getValues()[0];
+    if (h[0] !== 'Name' || h[1] !== 'Email' || h[2] !== 'PasswordHash' || h[3] !== 'Role') {
+      sh.getRange(1,1,1,4).setValues([['Name','Email','PasswordHash','Role']]);
+    }
+  }
+
+  const hash = (s)=>Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8)
+                  .map(b=>('0'+(b&255).toString(16)).slice(-2)).join('');
+  sh.appendRow(['Admin','admin@example.com', hash('admin123'), 'ADMIN']);
 }
