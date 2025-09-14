@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Система за отчитане на магазин</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    body {
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1000px;
+      width: 100%;
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+    
+    header {
+      background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+    
+    header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+    
+    .content {
+      padding: 40px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    
+    @media (max-width: 768px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .features {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 15px;
+    }
+    
+    .feature-icon {
+      background-color: #4b6cb7;
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    
+    .feature-text h3 {
+      margin-bottom: 5px;
+      color: #2c3e50;
+    }
+    
+    .feature-text p {
+      color: #7f8c8d;
+      line-height: 1.5;
+    }
+    
+    .auth-section {
+      background-color: #f8f9fa;
+      padding: 25px;
+      border-radius: 10px;
+    }
+    
+    .auth-section h2 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+      text-align: center;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #2c3e50;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #4b6cb7;
+      box-shadow: 0 0 0 2px rgba(75, 108, 183, 0.2);
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    }
+    
+    .divider {
+      text-align: center;
+      margin: 20px 0;
+      position: relative;
+    }
+    
+    .divider::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background-color: #ddd;
+    }
+    
+    .divider span {
+      background-color: #f8f9fa;
+      padding: 0 15px;
+      position: relative;
+      color: #7f8c8d;
+    }
+    
+    .admin-btn {
+      background: linear-gradient(90deg, #ff7e5f 0%, #feb47b 100%);
+    }
+    
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #7f8c8d;
+      border-top: 1px solid #eee;
+      margin-top: 20px;
+    }
+    
+    .error {
+      color: #e74c3c;
+      margin-top: 5px;
+      font-size: 14px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Система за отчитане на магазин</h1>
+      <p>Професионално решение за управление на приходи, разходи и инвентар</p>
+    </header>
+    
+    <div class="content">
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">📊</div>
+          <div class="feature-text">
+            <h3>Отчитане на транзакции</h3>
+            <p>Регистрирайте всички приходи и разходи в реално време с детайлна категоризация.</p>
+          </div>
+        </div>
+        
+        <div class="feature">
+          <div class="feature-icon">💰</div>
+          <div class="feature-text">
+            <h3>Управление на каса</h3>
+            <p>Следете наличностите, правете броене на пари и приключвайте работни дни.</p>
+          </div>
+        </div>
+        
+        <div class="feature">
+          <div class="feature-icon">📋</div>
+          <div class="feature-text">
+            <h3>Детайлни справки</h3>
+            <p>Генерирайте персонализирани справки за периодични отчети и анализ на дейността.</p>
+          </div>
+        </div>
+        
+        <div class="feature">
+          <div class="feature-icon">👥</div>
+          <div class="feature-text">
+            <h3>Управление на доставчици</h3>
+            <p>Поддържайте пълен регистър на доставчици и техните документи.</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="auth-section">
+        <h2>Вход в системата</h2>
+        
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="email">Имейл адрес</label>
+            <input type="email" id="email" placeholder="вашият@имейл.com" required>
+            <div class="error" id="emailError">Моля, въведете валиден имейл адрес</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="password">Парола</label>
+            <input type="password" id="password" placeholder="Вашата парола" required>
+            <div class="error" id="passwordError">Моля, въведете парола</div>
+          </div>
+          
+          <button type="submit" id="loginBtn">Влез в системата</button>
+        </form>
+        
+        <div class="divider">
+          <span>или</span>
+        </div>
+        
+        <button id="adminBtn" class="admin-btn">Вход в админ панела</button>
+      </div>
+    </div>
+    
+    <footer>
+      <p>&copy; 2023 Система за отчитане на магазин. Всички права запазени.</p>
+    </footer>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const loginForm = document.getElementById('loginForm');
+      const emailInput = document.getElementById('email');
+      const passwordInput = document.getElementById('password');
+      const emailError = document.getElementById('emailError');
+      const passwordError = document.getElementById('passwordError');
+      const loginBtn = document.getElementById('loginBtn');
+      const adminBtn = document.getElementById('adminBtn');
+      
+      // Функция за валидация на имейл
+      function isValidEmail(email) {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
+      }
+      
+      // Функция за показване на грешка
+      function showError(input, errorElement, message) {
+        input.style.borderColor = '#e74c3c';
+        errorElement.textContent = message;
+        errorElement.style.display = 'block';
+      }
+      
+      // Функция за скриване на грешка
+      function hideError(input, errorElement) {
+        input.style.borderColor = '#ddd';
+        errorElement.style.display = 'none';
+      }
+      
+      // Валидация при промяна на полетата
+      emailInput.addEventListener('input', function() {
+        if (!isValidEmail(emailInput.value)) {
+          showError(emailInput, emailError, 'Моля, въведете валиден имейл адрес');
+        } else {
+          hideError(emailInput, emailError);
+        }
+      });
+      
+      passwordInput.addEventListener('input', function() {
+        if (passwordInput.value.length < 1) {
+          showError(passwordInput, passwordError, 'Моля, въведете парола');
+        } else {
+          hideError(passwordInput, passwordError);
+        }
+      });
+      
+      // Обработка на изпращането на формата
+      loginForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        let isValid = true;
+        
+        // Валидация на имейл
+        if (!isValidEmail(emailInput.value)) {
+          showError(emailInput, emailError, 'Моля, въведете валиден имейл адрес');
+          isValid = false;
+        } else {
+          hideError(emailInput, emailError);
+        }
+        
+        // Валидация на парола
+        if (passwordInput.value.length < 1) {
+          showError(passwordInput, passwordError, 'Моля, въведете парола');
+          isValid = false;
+        } else {
+          hideError(passwordInput, passwordError);
+        }
+        
+        if (isValid) {
+          // Показване на съобщение за зареждане
+          loginBtn.textContent = 'Вход...';
+          loginBtn.disabled = true;
+          
+          // Симулация на заявка към сървъра
+          setTimeout(function() {
+            // В реална ситуация тук ще имаме заявка към Google Script
+            alert('Входът е успешен! Пренасочване към основното приложение...');
+            // В реална ситуация ще пренасочим към приложението
+            // google.script.run.withSuccessHandler(...).login(...);
+            
+            // Връщане на бутона в нормално състояние
+            loginBtn.textContent = 'Влез в системата';
+            loginBtn.disabled = false;
+          }, 1500);
+        }
+      });
+      
+      // Бутон за админ панел
+      adminBtn.addEventListener('click', function() {
+        adminBtn.textContent = 'Отваряне...';
+        adminBtn.disabled = true;
+        
+        // Симулация на зареждане
+        setTimeout(function() {
+          alert('Пренасочване към админ панела...');
+          // В реална ситуация: google.script.run.showAdminPanel_();
+          
+          // Връщане на бутона в нормално състояние
+          adminBtn.textContent = 'Вход в админ панела';
+          adminBtn.disabled = false;
+        }, 1000);
+      });
+    });
+  </script>
+</body>
+</html>
