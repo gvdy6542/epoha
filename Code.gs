@@ -68,7 +68,7 @@ function doGet(e){
       .setTitle('Отчитане на магазин')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   
-  }
+
 if (page === 'admin') {
     return HtmlService.createTemplateFromFile('Admin')
       .evaluate()
