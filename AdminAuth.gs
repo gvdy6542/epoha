@@ -62,8 +62,16 @@ function login(email, password) {
   ensureAdminSheets_();
   if (!email || !password) throw new Error('Липсват email/парола.');
   const sh = SS_().getSheetByName('Users');
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) throw new Error('Няма регистрирани потребители.');
+  let values = sh.getDataRange().getValues();
+  if (values.length < 2) {
+    if (typeof seedAdminUser_ === 'function') {
+      seedAdminUser_();
+      values = sh.getDataRange().getValues();
+    }
+    if (values.length < 2) {
+      throw new Error('Няма регистрирани потребители.');
+    }
+  }
   const hash = _sha256_(password);
   let user = null;
   for (let i = 1; i < values.length; i++) {
