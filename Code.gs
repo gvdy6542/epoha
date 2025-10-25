@@ -578,7 +578,16 @@ function seedAdminUser_(){
     }
   }
 
+  const existing = sh.getLastRow() > 1
+    ? sh.getRange(2,2,sh.getLastRow()-1,1).getValues().map(r=>String(r[0]||'').toLowerCase())
+    : [];
+  const email = 'admin@example.com';
+  if (existing.includes(email.toLowerCase())) {
+    return false;
+  }
+
   const hash = (s)=>Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8)
                   .map(b=>('0'+(b&255).toString(16)).slice(-2)).join('');
-  sh.appendRow(['Admin','admin@example.com', hash('admin123'), 'ADMIN']);
+  sh.appendRow(['Admin',email, hash('admin123'), 'ADMIN']);
+  return true;
 }
