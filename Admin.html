@@ -120,7 +120,58 @@ let TOKEN=null, CURRENT_USER=null, CURRENT_ROLE='VIEWER';
 let TX_HEADER=[];
 
 const $ = id => document.getElementById(id);
-const html = s => s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));
+const html = s => String(s || '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));
+
+const STORAGE_KEYS = ['localStorage','sessionStorage'];
+function getStorage(name){
+  try { return window[name]; } catch (err) { return null; }
+}
+function tryStorePair(storage, token, userData){
+  if (!storage) return false;
+  try {
+    storage.setItem('token', token);
+    storage.setItem('user', userData);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+function clearStoredAuth(){
+  STORAGE_KEYS.forEach(name => {
+    const storage = getStorage(name);
+    if (!storage) return;
+    try { storage.removeItem('token'); storage.removeItem('user'); } catch (err) {}
+  });
+}
+function getStoredToken(){
+  for (const name of STORAGE_KEYS){
+    const storage = getStorage(name);
+    if (!storage) continue;
+    try {
+      const token = storage.getItem('token');
+      if (token) return token;
+    } catch (err) {}
+  }
+  const params = new URLSearchParams(location.search);
+  const urlToken = params.get('token');
+  return urlToken || '';
+}
+function persistAuth(token, user){
+  const payload = JSON.stringify(user || {});
+  let stored = false;
+  STORAGE_KEYS.forEach(name => {
+    if (stored) return;
+    stored = tryStorePair(getStorage(name), token, payload) || stored;
+  });
+  if (stored){
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete('token');
+      history.replaceState({}, '', url.toString());
+    } catch (err) {}
+  }
+  return stored;
+}
 
 function setActiveTab(key){
   ['dash','users','panels','tx','logs'].forEach(k=>{ $('tabbtn-'+k).classList.toggle('active', k===key); });
@@ -138,9 +189,8 @@ function showTab(key){
 function doLogout(){
   google.script.run.withSuccessHandler(_=>{
     TOKEN=null; CURRENT_USER=null; CURRENT_ROLE='VIEWER';
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+    clearStoredAuth();
+    const u=new URL(location.href); u.searchParams.delete('page'); u.searchParams.delete('token'); location.href=u.toString();
   }).logout(TOKEN, CURRENT_USER?.email||'');
 }
 function applyRoleGuards(){
@@ -273,19 +323,22 @@ function loadLogs(page){
 
 /* Инициализация – взимаме данни за текущата сесия от логин-а (кеша) */
 window.addEventListener('load', ()=>{
-  const token = localStorage.getItem('token');
+  const token = getStoredToken();
   if(!token){
     alert('Сесията е изтекла.');
-    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+    clearStoredAuth();
+    const u=new URL(location.href); u.searchParams.delete('page'); u.searchParams.delete('token'); location.href=u.toString();
     return;
   }
   google.script.run.withSuccessHandler(res=>{
     TOKEN = res.token; CURRENT_USER = res.user||{}; CURRENT_ROLE = CURRENT_USER.role||'VIEWER';
+    persistAuth(TOKEN, CURRENT_USER);
     $('who').textContent = `${CURRENT_USER.name||''} • ${CURRENT_USER.email||''} • ${CURRENT_ROLE}`;
     applyRoleGuards(); showTab('dash');
   }).withFailureHandler(err=>{
     alert(err.message||err);
-    const u=new URL(location.href); u.searchParams.delete('page'); location.href=u.toString();
+    clearStoredAuth();
+    const u=new URL(location.href); u.searchParams.delete('page'); u.searchParams.delete('token'); location.href=u.toString();
   }).resumeSessionWithToken(token);
 });
 </script>
