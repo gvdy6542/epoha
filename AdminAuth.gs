@@ -62,8 +62,17 @@ function login(email, password) {
   ensureAdminSheets_();
   if (!email || !password) throw new Error('Липсват email/парола.');
   const sh = SS_().getSheetByName('Users');
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) throw new Error('Няма регистрирани потребители.');
+  let values = sh.getDataRange().getValues();
+  let seededDefault = false;
+  if (values.length < 2) {
+    if (typeof seedAdminUser_ === 'function') {
+      seededDefault = Boolean(seedAdminUser_());
+      values = sh.getDataRange().getValues();
+    }
+    if (values.length < 2) {
+      throw new Error('Няма регистрирани потребители.');
+    }
+  }
   const hash = _sha256_(password);
   let user = null;
   for (let i = 1; i < values.length; i++) {
@@ -75,7 +84,12 @@ function login(email, password) {
       break;
     }
   }
-  if (!user) throw new Error('Невалидни данни за вход.');
+  if (!user) {
+    if (seededDefault) {
+      throw new Error('Създаден е администратор admin@example.com / admin123. Използвай тези данни за първи вход и смени паролата.');
+    }
+    throw new Error('Невалидни данни за вход.');
+  }
   const token = Utilities.getUuid();
   CacheService.getScriptCache().put(`sess_${token}`, user.email, 60 * 15);
   log_(user.email, 'LOGIN', 'Успешен вход');
