@@ -601,3 +601,5 @@ function seedAdminUser_(){
   sh.appendRow(['Admin',email, hash('admin123'), 'ADMIN']);
   return true;
 }
+
+// End of file
