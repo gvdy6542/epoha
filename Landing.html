@@ -278,26 +278,22 @@
       const loginBtn = document.getElementById('loginBtn');
       const adminBtn = document.getElementById('adminBtn');
       
-      // Функция за валидация на имейл
       function isValidEmail(email) {
         const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return re.test(email);
       }
       
-      // Функция за показване на грешка
       function showError(input, errorElement, message) {
         input.style.borderColor = '#e74c3c';
         errorElement.textContent = message;
         errorElement.style.display = 'block';
       }
       
-      // Функция за скриване на грешка
       function hideError(input, errorElement) {
         input.style.borderColor = '#ddd';
         errorElement.style.display = 'none';
       }
       
-      // Валидация при промяна на полетата
       emailInput.addEventListener('input', function() {
         if (!isValidEmail(emailInput.value)) {
           showError(emailInput, emailError, 'Моля, въведете валиден имейл адрес');
@@ -314,13 +310,11 @@
         }
       });
       
-      // Обработка на изпращането на формата
       loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
         let isValid = true;
         
-        // Валидация на имейл
         if (!isValidEmail(emailInput.value)) {
           showError(emailInput, emailError, 'Моля, въведете валиден имейл адрес');
           isValid = false;
@@ -328,7 +322,6 @@
           hideError(emailInput, emailError);
         }
         
-        // Валидация на парола
         if (passwordInput.value.length < 1) {
           showError(passwordInput, passwordError, 'Моля, въведете парола');
           isValid = false;
@@ -342,20 +335,19 @@
 
           const storeToken = (token, user) => {
             const data = JSON.stringify(user || {});
-            const getStorage = (name) => {
-              try { return window[name]; } catch (err) { return null; }
-            };
-            const trySet = (storage) => {
-              if (!storage) return false;
+            try {
+              localStorage.setItem('token', token);
+              localStorage.setItem('user', data);
+              return true;
+            } catch {
               try {
-                storage.setItem('token', token);
-                storage.setItem('user', data);
+                sessionStorage.setItem('token', token);
+                sessionStorage.setItem('user', data);
                 return true;
-              } catch (err) {
+              } catch {
                 return false;
               }
-            };
-            return trySet(getStorage('localStorage')) || trySet(getStorage('sessionStorage'));
+            }
           };
 
           google.script.run
@@ -363,11 +355,14 @@
               const token = res.token;
               const user = res.user || {};
               const stored = storeToken(token, user);
-              let target = '?page=admin';
+              const nextUrl = new URL(window.location.href);
+              nextUrl.searchParams.set('page', 'admin');
               if (!stored) {
-                target += `&token=${encodeURIComponent(token)}`;
+                nextUrl.searchParams.set('token', token);
+              } else {
+                nextUrl.searchParams.delete('token');
               }
-              window.location.href = target;
+              window.location.href = nextUrl.toString();
             })
             .withFailureHandler(err => {
               alert(err.message || err);
@@ -377,15 +372,9 @@
             .login(emailInput.value.trim(), passwordInput.value);
         }
       });
-      // Бутон за админ панел
+
       adminBtn.addEventListener('click', function() {
-        let token = null;
-        try {
-          token = window.localStorage.getItem('token');
-        } catch (err) {}
-        if (!token) {
-          try { token = window.sessionStorage.getItem('token'); } catch (err) {}
-        }
+        let token = localStorage.getItem('token') || sessionStorage.getItem('token');
         if (!token) {
           alert('Моля, влез първо.');
           return;
