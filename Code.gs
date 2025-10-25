@@ -55,7 +55,7 @@ function showAdminPanel_(){
   const html = HtmlService.createHtmlOutputFromFile('Admin')
     .setTitle('Админ панел')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .setWidth(1200).setHeight(800);
+   .setWidth(1200).setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Админ панел');
 }
 
@@ -77,7 +77,7 @@ if (page === 'admin') {
   }
   // default: Landing
   }
-return HtmlService.createTemplateFromFile('Landing')
+reurn HtmlService.createTemplateFromFile('Landing')
     .evaluate()
     .setTitle('Начало')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
