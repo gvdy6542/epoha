@@ -1,10 +1,16 @@
 /**************************************************
- * CONFIG
+ * CONFIGURATION
  **************************************************/
-const TZ      = 'Europe/Sofia';
-const SS_ID   = SpreadsheetApp.getActive().getId();
 
+const TZ = 'Europe/Sofia';
 
+// 📄 Основна таблица за проекта (ЕПОХА)
+const SS_ID = '1EW4CzXn-DSm9RjloqXNeX7wYY7OeFRBsP1Kwi6vviKs';
+function SS_() {
+  return SpreadsheetApp.openById(SS_ID);
+}
+
+// Основни листове (провери дали имената съвпадат с тези в твоя файл)
 const SH_TX   = 'Transactions';
 const SH_CNT  = 'CashCounts';
 const SH_DAY  = 'DayClosings';
@@ -12,7 +18,9 @@ const SH_SET  = 'Settings';
 const SH_USERS= 'Users';
 const SH_SUP  = 'Suppliers';
 
-const DEFAULT_DENOMS  = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
+// Настройки по подразбиране
+const DEFAULT_DENOMS = [100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1];
+
 const DEFAULT_METHODS = ['CASH','CARD','BANK'];
 const DEFAULT_TYPES   = ['INCOME','EXPENSE'];
 const DOC_TYPES = [
