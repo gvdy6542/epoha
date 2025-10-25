@@ -73,7 +73,7 @@ if (page === 'admin') {
     return HtmlService.createTemplateFromFile('Admin')
       .evaluate()
       .setTitle('Админ панел')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   // default: Landing
   }
