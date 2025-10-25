@@ -68,14 +68,16 @@ function doGet(e){
       .setTitle('Отчитане на магазин')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   
-  if (page === 'admin') {
+  }
+if (page === 'admin') {
     return HtmlService.createTemplateFromFile('Admin')
       .evaluate()
       .setTitle('Админ панел')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   // default: Landing
-  return HtmlService.createTemplateFromFile('Landing')
+  }
+return HtmlService.createTemplateFromFile('Landing')
     .evaluate()
     .setTitle('Начало')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
