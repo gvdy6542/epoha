@@ -80,7 +80,7 @@ if (page === 'admin') {
 reurn HtmlService.createTemplateFromFile('Landing')
     .evaluate()
     .setTitle('Начало')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+   .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 
