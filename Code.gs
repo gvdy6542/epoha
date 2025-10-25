@@ -76,13 +76,12 @@ if (page === 'admin') {
      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   // default: Landing
-  }
-reurn HtmlService.createTemplateFromFile('Landing')
+  
+return HtmlService.createTemplateFromFile('Landing')
     .evaluate()
     .setTitle('Начало')
    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
-
 
 /**************************************************
  * PUBLIC API
