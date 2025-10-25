@@ -176,8 +176,8 @@ function loadUsers(){
         <td>${html(u.role||'')}</td>
         <td>${u.hasPassword?'<span class="pill">запазена</span>':'<span class="muted">липсва</span>'}</td>
         <td>
-          <button onclick="editUser(${u.row},'${html(u.name||'')}', '${html(u.email||'')}', '${html(u.role||'VIEWER')}')" ${isAdmin?'':'disabled'}>Редакция</button>
-          <button class="btn danger" onclick="delUser(${u.row},'${html(u.email||'')}')" ${isAdmin?'':'disabled'}>Изтрий</button>
+          <button class="user-edit" data-row="${u.row}" data-name="${html(u.name||'')}" data-email="${html(u.email||'')}" data-role="${html(u.role||'VIEWER')}" ${isAdmin?'':'disabled'}>Редакция</button>
+          <button class="btn danger user-delete" data-row="${u.row}" data-email="${html(u.email||'')}" ${isAdmin?'':'disabled'}>Изтрий</button>
         </td>
       </tr>`).join('');
     $('users-table').innerHTML = `<table>
@@ -195,6 +195,24 @@ function saveUser(){
   google.script.run.withSuccessHandler(_=>{ closeUserForm(); loadUsers(); }).withFailureHandler(alert).upsertUser(TOKEN, row, name, email, pass||'', role);
 }
 function delUser(row, email){ if(!confirm('Сигурен ли си?')) return; google.script.run.withSuccessHandler(_=>{ loadUsers(); }).withFailureHandler(alert).deleteUser(TOKEN, row, email||''); }
+
+document.addEventListener('click', e=>{
+  const editBtn = e.target.closest('.user-edit');
+  if(editBtn && !editBtn.disabled){
+    const row = Number(editBtn.dataset.row||'0') || null;
+    const name = editBtn.dataset.name || '';
+    const email = editBtn.dataset.email || '';
+    const role = editBtn.dataset.role || 'VIEWER';
+    editUser(row, name, email, role);
+    return;
+  }
+  const delBtn = e.target.closest('.user-delete');
+  if(delBtn && !delBtn.disabled){
+    const row = Number(delBtn.dataset.row||'0') || null;
+    const email = delBtn.dataset.email || '';
+    delUser(row, email);
+  }
+});
 
 /* PANELS */
 function loadPanels(){
