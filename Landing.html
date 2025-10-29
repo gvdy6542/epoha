@@ -356,7 +356,7 @@
               const user = res.user || {};
               const stored = storeToken(token, user);
               const nextUrl = new URL(window.location.href);
-              nextUrl.searchParams.set('page', 'admin');
+              nextUrl.searchParams.set('page', 'app');
               if (!stored) {
                 nextUrl.searchParams.set('token', token);
               } else {
