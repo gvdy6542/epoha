@@ -377,7 +377,13 @@
           alert('Моля, влез първо.');
           return;
         }
-        window.location.href = '?page=admin';
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('page', 'admin');
+          window.location.href = url.toString();
+        } catch (err) {
+          window.location.href = '?page=admin';
+        }
       });
     });
   </script>
