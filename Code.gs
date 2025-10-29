@@ -62,26 +62,35 @@ function showAdminPanel_(){
 function doGet(e){
   ensureSheets_();
   const page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page).toLowerCase() : '';
+
+  console.log('doGet called with page:', page);
+
   if (page === 'app') {
+    console.log('Serving Index.html');
     return HtmlService.createTemplateFromFile('Index')
       .evaluate()
       .setTitle('Отчитане на магазин')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 
   }
 
   if (page === 'admin') {
+    console.log('Serving Admin.html');
     return HtmlService.createTemplateFromFile('Admin')
       .evaluate()
       .setTitle('Админ панел')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
   // default: Landing
 
+  console.log('Serving Landing.html (default)');
   return HtmlService.createTemplateFromFile('Landing')
     .evaluate()
     .setTitle('Начало')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /**************************************************

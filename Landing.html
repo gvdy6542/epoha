@@ -333,39 +333,37 @@
           loginBtn.textContent = 'Вход...';
           loginBtn.disabled = true;
 
-          const storeToken = (token, user) => {
-            const data = JSON.stringify(user || {});
-            try {
-              localStorage.setItem('token', token);
-              localStorage.setItem('user', data);
-              return true;
-            } catch {
-              try {
-                sessionStorage.setItem('token', token);
-                sessionStorage.setItem('user', data);
-                return true;
-              } catch {
-                return false;
-              }
-            }
-          };
-
           google.script.run
             .withSuccessHandler(res => {
               const token = res.token;
               const user = res.user || {};
-              const stored = storeToken(token, user);
-              const nextUrl = new URL(window.location.href);
-              nextUrl.searchParams.set('page', 'app');
-              if (!stored) {
-                nextUrl.searchParams.set('token', token);
-              } else {
-                nextUrl.searchParams.delete('token');
+
+              const data = JSON.stringify(user);
+              let stored = false;
+
+              try {
+                localStorage.setItem('token', token);
+                localStorage.setItem('user', data);
+                stored = true;
+              } catch (e) {
+                try {
+                  sessionStorage.setItem('token', token);
+                  sessionStorage.setItem('user', data);
+                  stored = true;
+                } catch (e) {
+                  console.error('Cannot store in any storage');
+                }
               }
-              window.location.href = nextUrl.toString();
+
+              const url = new URL(window.location.href);
+              url.searchParams.set('page', 'app');
+              if (!stored) {
+                url.searchParams.set('token', token);
+              }
+              window.location.href = url.toString();
             })
             .withFailureHandler(err => {
-              alert(err.message || err);
+              alert('Грешка при вход: ' + (err.message || err));
               loginBtn.textContent = 'Влез в системата';
               loginBtn.disabled = false;
             })
